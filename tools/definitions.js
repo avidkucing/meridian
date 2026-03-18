@@ -509,8 +509,19 @@ NOTE: Requires mint address. If you only have a symbol/name, call get_token_info
       name: "get_token_narrative",
       description: `Get the narrative or story behind a token from Jupiter ChainInsight.
 Returns a plain-text description of what the token is about — its origin, theme, community, and activity.
-Use this during token evaluation to understand if the token has a real narrative driving it (community meme, real project, KOL play, etc.) vs nothing meaningful.
-A strong, specific narrative is a positive signal. An empty or vague narrative is a caution flag.`,
+Use during token evaluation to understand if there is a real catalyst driving attention and volume.
+
+GOOD narrative signals (proceed with more confidence):
+- Specific origin story: tied to a real-world event, viral moment, person, animal, place, or cultural reference
+- Active community: mentions contests, donations, real-world actions, organized activities
+- Trending catalyst: references something currently viral on X/CT (KOL call, news event, meme wave)
+- Named entities: real identifiable subjects (a specific animal, person, project, game, etc.)
+
+BAD narrative signals (caution or skip):
+- Empty or null — no story at all
+- Pure hype/financial language only: "next 100x", "to the moon", "fair launch gem" with no substance
+- Completely generic: "community-driven token", "meme coin" with zero specific context
+- Copy-paste of another token's narrative`,
       parameters: {
         type: "object",
         properties: {
