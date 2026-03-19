@@ -270,7 +270,7 @@ STEPS:
 2. deploy_position directly — it fetches the active bin internally, no separate get_active_bin needed.
    Use ${deployAmount} SOL. Do NOT use a smaller amount — this is compounded from your ${currentBalance.sol.toFixed(3)} SOL wallet.
 3. Report: pool chosen, key signals, deploy outcome.
-      `, config.llm.maxSteps, [], "SCREENER", config.llm.screeningModel, 512);
+      `, config.llm.maxSteps, [], "SCREENER", config.llm.screeningModel, 2048);
       screenReport = content;
     } catch (error) {
       log("cron_error", `Screening cycle failed: ${error.message}`);
