@@ -366,13 +366,11 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
     const pools = portfolio.pools || [];
     log("positions", `Found ${pools.length} pool(s) with open positions`);
 
-    // For OOR positions we need bin data (active_bin) — fetch per-pool PnL only for those
-    const oorPools = pools.filter(pool => pool.outOfRange || pool.positionsOutOfRange?.length > 0);
+    // Fetch bin data (lowerBinId, upperBinId, poolActiveBinId) for all pools in parallel
+    // Needed for rules 3 & 4 (active_bin vs upper_bin comparison)
     const binDataByPool = {};
-    if (oorPools.length > 0) {
-      const pnlMaps = await Promise.all(oorPools.map(pool => fetchDlmmPnlForPool(pool.poolAddress, walletAddress)));
-      oorPools.forEach((pool, i) => { binDataByPool[pool.poolAddress] = pnlMaps[i]; });
-    }
+    const pnlMaps = await Promise.all(pools.map(pool => fetchDlmmPnlForPool(pool.poolAddress, walletAddress)));
+    pools.forEach((pool, i) => { binDataByPool[pool.poolAddress] = pnlMaps[i]; });
 
     const positions = [];
     for (const pool of pools) {
@@ -387,7 +385,7 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         const binData = binDataByPool[pool.poolAddress]?.[positionAddress];
         const lowerBin  = binData?.lowerBinId      ?? tracked?.bin_range?.min ?? null;
         const upperBin  = binData?.upperBinId      ?? tracked?.bin_range?.max ?? null;
-        const activeBin = binData?.poolActiveBinId ?? null;
+        const activeBin = binData?.poolActiveBinId ?? tracked?.bin_range?.active ?? null;
 
         const ageFromState = tracked?.deployed_at
           ? Math.floor((Date.now() - new Date(tracked.deployed_at).getTime()) / 60000)
@@ -641,7 +639,8 @@ export async function closePosition({ position_address }) {
           log("close_warn", `Re-fetch after close failed: ${e.message} — using cached value`);
         }
       }
-      const initialUsd = tracked.initial_value_usd || 0;
+      // Derive initial value from final - pnl if not tracked (most positions don't set initial_value_usd at deploy)
+      const initialUsd = tracked.initial_value_usd || (finalValueUsd - pnlUsd) || 0;
 
       await recordPerformance({
         position: position_address,
