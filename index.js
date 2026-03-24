@@ -58,6 +58,7 @@ let _cronTasks = [];
 let _managementBusy = false; // prevents overlapping management cycles
 let _screeningBusy = false;  // prevents overlapping screening cycles
 let _screeningLastTriggered = 0; // epoch ms — prevents management from spamming screening
+let _pollTriggeredAt = 0; // epoch ms — cooldown for poller-triggered management
 
 async function runBriefing() {
   log("cron", "Starting morning briefing");
@@ -476,9 +477,16 @@ Summarize the current portfolio health, total fees earned, and performance of al
         if (p.pnl_pct == null) continue;
         const exit = updatePnlAndCheckExits(p.position, p.pnl_pct, config.management);
         if (exit) {
-          log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason} — triggering management immediately`);
-          runManagementCycle().catch((e) => log("cron_error", `Poll-triggered management failed: ${e.message}`));
-          break; // management will handle all positions
+          const cooldownMs = config.schedule.managementIntervalMin * 60 * 1000;
+          const sinceLastTrigger = Date.now() - _pollTriggeredAt;
+          if (sinceLastTrigger >= cooldownMs) {
+            _pollTriggeredAt = Date.now();
+            log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason} — triggering management`);
+            runManagementCycle().catch((e) => log("cron_error", `Poll-triggered management failed: ${e.message}`));
+          } else {
+            log("state", `[PnL poll] Exit alert: ${p.pair} — ${exit.reason} — cooldown (${Math.round((cooldownMs - sinceLastTrigger) / 1000)}s left)`);
+          }
+          break;
         }
       }
     } finally {
