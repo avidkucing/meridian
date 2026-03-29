@@ -848,7 +848,8 @@ Commands:
       console.log(`  maxTvl:               ${s.maxTvl}`);
       console.log(`  minVolume:            ${s.minVolume}`);
       console.log(`  minTokenFeesSol:      ${s.minTokenFeesSol}`);
-      console.log(`  maxBundlersPct:       ${s.maxBundlersPct}`);
+      console.log(`  maxBundlePct:         ${s.maxBundlePct}`);
+      console.log(`  maxBotHoldersPct:     ${s.maxBotHoldersPct}`);
       console.log(`  maxTop10Pct:          ${s.maxTop10Pct}`);
       console.log(`  timeframe:            ${s.timeframe}`);
       const perf = getPerformanceSummary();

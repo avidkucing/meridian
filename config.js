@@ -37,7 +37,8 @@ export const config = {
     timeframe:         u.timeframe         ?? "5m",
     category:          u.category          ?? "trending",
     minTokenFeesSol:   u.minTokenFeesSol   ?? 30,  // global fees paid (priority+jito tips). below = bundled/scam
-    maxBundlersPct:    u.maxBundlersPct    ?? 30,  // max bot/bundler holders % (from Jupiter audit)
+    maxBundlePct:      u.maxBundlePct      ?? 30,  // max bundle holding % (OKX advanced-info)
+    maxBotHoldersPct:  u.maxBotHoldersPct  ?? 30,  // max bot holder addresses % (Jupiter audit)
     maxTop10Pct:       u.maxTop10Pct       ?? 60,  // max top 10 holders concentration
     blockedLaunchpads:  u.blockedLaunchpads  ?? [],  // e.g. ["letsbonk.fun", "pump.fun"]
     minTokenAgeHours:   u.minTokenAgeHours   ?? null, // null = no minimum
@@ -147,6 +148,8 @@ export function reloadScreeningThresholds() {
     if (fresh.minTokenAgeHours  !== undefined) s.minTokenAgeHours = fresh.minTokenAgeHours;
     if (fresh.maxTokenAgeHours  !== undefined) s.maxTokenAgeHours = fresh.maxTokenAgeHours;
     if (fresh.athFilterPct      !== undefined) s.athFilterPct     = fresh.athFilterPct;
+    if (fresh.maxBundlePct      != null) s.maxBundlePct     = fresh.maxBundlePct;
+    if (fresh.maxBotHoldersPct  != null) s.maxBotHoldersPct = fresh.maxBotHoldersPct;
   } catch { /* ignore */ }
 }
 
