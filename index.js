@@ -652,7 +652,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
         pool.price_vs_ath_pct != null ? `  ath: price_vs_ath=${pool.price_vs_ath_pct}%${pool.top_cluster_trend ? `, top_cluster=${pool.top_cluster_trend}` : ""}` : null,
         `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map(w => w.name).join(", ")})` : ""}`,
         activeBin != null ? `  active_bin: ${activeBin}` : null,
-        taBins ? `  ta_bins: bins_below=${taBins.bins_below} (min: ${config.strategy.binsBelow}), support=${taBins.support?.price || 'none'}, RSI=${taBins.rsi?.value?.toFixed(1) || '?'}, range=${taBins.price_range?.below_pct?.toFixed(1) || '?'}%↓/${taBins.price_range?.above_pct?.toFixed(1) || '?'}%↑` : null,
+        taBins ? `  ta_bins: bins_below=${taBins.bins_below} (min: ${config.strategy.binsBelow})${taBins.bins_above > 0 ? `, bins_above=${taBins.bins_above}` : ''}, support=${taBins.support?.price || 'none'}, RSI=${taBins.rsi?.value?.toFixed(1) || '?'}, range=${taBins.price_range?.below_pct?.toFixed(1) || '?'}%↓${taBins.bins_above > 0 ? `/${taBins.price_range?.above_pct?.toFixed(1) || '?'}%↑` : ''}` : null,
         entrySignal != null ? `  entry_signal: direction=${entrySignal.direction}, flipped=${entrySignal.flipped}   ${entrySignal.pass ? "✅" : "❌"}` : null,
         priceChange != null ? `  1h: price${priceChange >= 0 ? "+" : ""}${priceChange}%, net_buyers=${netBuyers ?? "?"}` : null,
         n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
@@ -685,7 +685,7 @@ ${entrySig ? `\nENTRY SIGNAL REQUIRED: only deploy pools where entry_signal show
    ◎ <deploy amount> SOL | <strategy> | bin <active_bin>
    Range: <minPrice> → <maxPrice>
    Bin range: <minBinId> → <maxBinId>
-   TA bins: below <x>%, support <price or none>, RSI <x>, range <x>%↓/<x>%↑
+   TA bins: below <x>%, support <price or none>, RSI <x>, range <x>%↓<if bins_above> /<x>%↑</if>
    Downside buffer: <negative %>
 
    MARKET

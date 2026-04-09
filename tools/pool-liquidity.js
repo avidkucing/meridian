@@ -60,6 +60,32 @@ export async function getPoolLiquidity({ pool_address, rangeBelow = 50, rangeAbo
   // Fetch bin arrays for the range — SDK returns Bin[] with liquidity data
   const binsLiquidity = await pool.getBinsBetweenLowerAndUpperBound(minBinId, maxBinId);
 
+  // Guard: SDK may return an object with a bins/array property, or empty result
+  const binsArray = Array.isArray(binsLiquidity)
+    ? binsLiquidity
+    : (binsLiquidity?.bins ?? binsLiquidity?.data ?? []);
+
+  if (binsArray.length === 0) {
+    return {
+      pool_address,
+      activeBinId,
+      binStep,
+      currentPrice: parseFloat(currentPrice.toFixed(8)),
+      bins: [],
+      summary: {
+        totalSol: 0,
+        activeBin: null,
+        maxLiquidityBin: null,
+        solBelow: 0,
+        solAbove: 0,
+        pctBelowActive: 0,
+        pctAboveActive: 0,
+        emptyBins: 0,
+        range: { minBinId, maxBinId, rangeBelow, rangeAbove },
+      },
+    };
+  }
+
   const solDecimals = pool.lbPair.tokenYDecimals;
   const lamportsPerSol = Math.pow(10, solDecimals);
 
@@ -67,7 +93,7 @@ export async function getPoolLiquidity({ pool_address, rangeBelow = 50, rangeAbo
   let maxBinSol = 0;
   let maxBinIdResult = null;
 
-  const bins = binsLiquidity.map((bin) => {
+  const bins = binsArray.map((bin) => {
     const solAmount = bin.amountY / lamportsPerSol;
     const price = pool.fromPricePerLamport(Number(bin.price));
     totalSol += solAmount;
