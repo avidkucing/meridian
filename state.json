@@ -1,0 +1,2375 @@
+{
+  "positions": {
+    "AsnRGdfMLqoq84MQJrfjUuAj6N9WBvkjH4fCerF9XJJ3": {
+      "position": "AsnRGdfMLqoq84MQJrfjUuAj6N9WBvkjH4fCerF9XJJ3",
+      "pool": "HRSwLqNpd4ZfuD6HsTFpdS2nuEGPmHvZqvcQP1RKGkxM",
+      "pool_name": "BIGLY-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -679,
+        "max": -633,
+        "bins_below": 46,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -633,
+      "bin_step": 100,
+      "volatility": 1.64,
+      "fee_tvl_ratio": 0.2869,
+      "initial_fee_tvl_24h": 0.2869,
+      "organic_score": 70,
+      "initial_value_usd": 40,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T02:33:28.355Z",
+      "out_of_range_since": "2026-04-07T02:42:53.206Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T03:13:45.717Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T03:13:45.717Z: Trailing TP: Out of range for 30m"
+      ],
+      "peak_pnl_pct": 0.25,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "BptNi57gF21W1F49CUt5JyacjhxhDwP1hRTirrqFxSt9": {
+      "position": "BptNi57gF21W1F49CUt5JyacjhxhDwP1hRTirrqFxSt9",
+      "pool": "AZQHL6CQFZoKonM5ZpQQxdg71bhEf2bhRMcB5uhFo5ka",
+      "pool_name": "stonks-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -577,
+        "max": -561,
+        "bins_below": 16,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -561,
+      "bin_step": 100,
+      "volatility": 3.24,
+      "fee_tvl_ratio": 0.4581,
+      "initial_fee_tvl_24h": 0.4581,
+      "organic_score": 75,
+      "initial_value_usd": 60,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T03:16:02.361Z",
+      "out_of_range_since": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T03:41:02.933Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T03:41:02.933Z: trailing TP: peak 4.81% → current 2.26% (dropped 2.55% >= 1.5%)"
+      ],
+      "peak_pnl_pct": 4.81,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": true
+    },
+    "5KvoUmYWj6jwXqs7MTmmPKJFxYkAi9LEaDQftuetP2F4": {
+      "position": "5KvoUmYWj6jwXqs7MTmmPKJFxYkAi9LEaDQftuetP2F4",
+      "pool": "8QjxUhHUBJJvHn3GCAqZqoevNZkr7D641JBRLFwqnhNk",
+      "pool_name": "ANIME-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -694,
+        "max": -670,
+        "bins_below": 24,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -670,
+      "bin_step": 80,
+      "volatility": 1.57,
+      "fee_tvl_ratio": 0.29,
+      "initial_fee_tvl_24h": 0.29,
+      "organic_score": 69,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T03:46:46.310Z",
+      "out_of_range_since": "2026-04-07T04:07:51.268Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T04:18:53.410Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T04:18:53.410Z: Rule 3: pumped far above range"
+      ],
+      "peak_pnl_pct": 1.52,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "CNsjyYkLcSqToCC9sUDsd2VkdXCctCrkwZyXPiYECzGG": {
+      "position": "CNsjyYkLcSqToCC9sUDsd2VkdXCctCrkwZyXPiYECzGG",
+      "pool": "8QjxUhHUBJJvHn3GCAqZqoevNZkr7D641JBRLFwqnhNk",
+      "pool_name": "ANIME-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -705,
+        "max": -654,
+        "bins_below": 51,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -654,
+      "bin_step": 80,
+      "volatility": 1.91,
+      "fee_tvl_ratio": 0.1697,
+      "initial_fee_tvl_24h": 0.1697,
+      "organic_score": 69,
+      "initial_value_usd": 30,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T04:22:38.735Z",
+      "out_of_range_since": "2026-04-07T04:26:22.047Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T04:30:23.380Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T04:30:23.380Z: Rule 3: pumped far above range"
+      ],
+      "peak_pnl_pct": 1.75,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "3bdEEnU9hWrm7YAZrqjHy6gAMBfRPaFxht3q1gNfmXU7": {
+      "position": "3bdEEnU9hWrm7YAZrqjHy6gAMBfRPaFxht3q1gNfmXU7",
+      "pool": "AZQHL6CQFZoKonM5ZpQQxdg71bhEf2bhRMcB5uhFo5ka",
+      "pool_name": "stonks-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -623,
+        "max": -607,
+        "bins_below": 16,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -607,
+      "bin_step": 100,
+      "volatility": 4.64,
+      "fee_tvl_ratio": 0.7047,
+      "initial_fee_tvl_24h": 0.7047,
+      "organic_score": 75,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T04:34:42.415Z",
+      "out_of_range_since": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T06:33:04.373Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T06:33:04.373Z: trailing TP"
+      ],
+      "peak_pnl_pct": 4.04,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": true
+    },
+    "4NdxbNSyCy9fXvMAKH5EzydT6nf7b5c5fJkaHw9Fo74S": {
+      "position": "4NdxbNSyCy9fXvMAKH5EzydT6nf7b5c5fJkaHw9Fo74S",
+      "pool": "8QjxUhHUBJJvHn3GCAqZqoevNZkr7D641JBRLFwqnhNk",
+      "pool_name": "ANIME-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -686,
+        "max": -652,
+        "bins_below": 34,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -652,
+      "bin_step": 80,
+      "volatility": 1.89,
+      "fee_tvl_ratio": 0.1006,
+      "initial_fee_tvl_24h": 0.1006,
+      "organic_score": 72,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T06:37:16.411Z",
+      "out_of_range_since": "2026-04-07T06:53:54.323Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T07:21:24.356Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T07:21:24.356Z: Rule 3: pumped far above range"
+      ],
+      "peak_pnl_pct": 0.11,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "GoBwijw2JLBzB6JSjkRBx8vmgtbBk4QLETWKCDBHtQzg": {
+      "position": "GoBwijw2JLBzB6JSjkRBx8vmgtbBk4QLETWKCDBHtQzg",
+      "pool": "8QjxUhHUBJJvHn3GCAqZqoevNZkr7D641JBRLFwqnhNk",
+      "pool_name": "ANIME-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -694,
+        "max": -640,
+        "bins_below": 54,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -640,
+      "bin_step": 80,
+      "volatility": 2.02,
+      "fee_tvl_ratio": 0.0632,
+      "initial_fee_tvl_24h": 0.0632,
+      "organic_score": 72,
+      "initial_value_usd": 60,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T07:23:25.949Z",
+      "out_of_range_since": "2026-04-07T07:24:02.894Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T07:36:49.704Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T07:36:49.704Z: Rule 3: pumped far above range"
+      ],
+      "peak_pnl_pct": 0.05,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "E4ybcZ3gs2k1btcdyyopPh3v9Y9Tt4rP9Eb65UQztF4F": {
+      "position": "E4ybcZ3gs2k1btcdyyopPh3v9Y9Tt4rP9Eb65UQztF4F",
+      "pool": "8QjxUhHUBJJvHn3GCAqZqoevNZkr7D641JBRLFwqnhNk",
+      "pool_name": "ANIME-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -724,
+        "max": -636,
+        "bins_below": 88,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -636,
+      "bin_step": 80,
+      "volatility": 2.08,
+      "fee_tvl_ratio": 0.1139,
+      "initial_fee_tvl_24h": 0.1139,
+      "organic_score": 72,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T07:39:04.036Z",
+      "out_of_range_since": "2026-04-07T07:39:54.689Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T07:42:26.508Z",
+      "notes": [
+        "Closed at 2026-04-07T07:42:26.508Z: Rule 3: pumped far above range"
+      ],
+      "peak_pnl_pct": 0.07,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "7ZD1yQiUVfuv4sJDPMpJLKvHF38Vth3M6pE7BXwpcAXm": {
+      "position": "7ZD1yQiUVfuv4sJDPMpJLKvHF38Vth3M6pE7BXwpcAXm",
+      "pool": "CSp21LA8uzJGLAVJ64UzGNLqnfzEx6DycXvgDZyAhGib",
+      "pool_name": "BabyTrump-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -406,
+        "max": -365,
+        "bins_below": 41,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -365,
+      "bin_step": 125,
+      "volatility": 3.51,
+      "fee_tvl_ratio": 0.8158,
+      "initial_fee_tvl_24h": 0.8158,
+      "organic_score": 83,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T07:46:29.433Z",
+      "out_of_range_since": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T08:16:06.909Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)"
+      ],
+      "peak_pnl_pct": 2.21,
+      "pending_peak_pnl_pct": 3.68,
+      "pending_peak_started_at": "2026-04-07T08:15:41.664Z",
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": true
+    },
+    "C69PiHyWB83oroysngMzH9y8fGYMdG3GJF5hNsiPYar2": {
+      "position": "C69PiHyWB83oroysngMzH9y8fGYMdG3GJF5hNsiPYar2",
+      "pool": "EgGACLzNtvTWfjWopkMbbcRsUPAaSCcgPjbNqUCcLUCJ",
+      "pool_name": "BURNIE-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -336,
+        "max": -322,
+        "bins_below": 14,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -322,
+      "bin_step": 100,
+      "volatility": 1.23,
+      "fee_tvl_ratio": 0.1292,
+      "initial_fee_tvl_24h": 0.1292,
+      "organic_score": 87,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T08:17:47.540Z",
+      "out_of_range_since": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T09:07:32.171Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T09:07:32.171Z: stop loss: PnL -6.22% <= -5%"
+      ],
+      "peak_pnl_pct": 0.41,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "9jT1vCnv1fFYPDAstrQMz9uZV6JskdjWz45KdPKxyMpv": {
+      "position": "9jT1vCnv1fFYPDAstrQMz9uZV6JskdjWz45KdPKxyMpv",
+      "pool": "G8H6HejREqcLAw9nr43mPbqDCc4UU8xqkmP1EoGx7SGa",
+      "pool_name": "BabyTrump-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -507,
+        "max": -473,
+        "bins_below": 34,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -473,
+      "bin_step": 100,
+      "volatility": 1.49,
+      "fee_tvl_ratio": 0.5224,
+      "initial_fee_tvl_24h": 0.5224,
+      "organic_score": 83,
+      "initial_value_usd": 40,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T09:09:02.351Z",
+      "out_of_range_since": "2026-04-07T09:41:59.166Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T09:45:27.784Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T09:45:27.784Z: Rule 3: pumped far above range"
+      ],
+      "peak_pnl_pct": 1.52,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "FqTHTh4MvC5EMKVEw1VbhC7zUJVpewH87JppJ58TWVEv": {
+      "position": "FqTHTh4MvC5EMKVEw1VbhC7zUJVpewH87JppJ58TWVEv",
+      "pool": "7bHEH5KgKJHdFjRNpJ4DFsjxWKxtmELQaA9g3WcZpWFJ",
+      "pool_name": "BURNIE-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -344,
+        "max": -330,
+        "bins_below": 14,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -330,
+      "bin_step": 100,
+      "volatility": 0.95,
+      "fee_tvl_ratio": 0.0616,
+      "initial_fee_tvl_24h": 0.0616,
+      "organic_score": 87,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T09:49:17.583Z",
+      "out_of_range_since": "2026-04-07T09:50:13.785Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T10:21:09.573Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T10:21:09.573Z: trailing TP"
+      ],
+      "peak_pnl_pct": 0,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "AJYAFkNQZx9wwudJUwRZzGVCv4ZrhauB8ZQEbyZjQkJv": {
+      "position": "AJYAFkNQZx9wwudJUwRZzGVCv4ZrhauB8ZQEbyZjQkJv",
+      "pool": "CSp21LA8uzJGLAVJ64UzGNLqnfzEx6DycXvgDZyAhGib",
+      "pool_name": "BabyTrump-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -401,
+        "max": -364,
+        "bins_below": 37,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -364,
+      "bin_step": 125,
+      "volatility": 2.77,
+      "fee_tvl_ratio": 0.4389,
+      "initial_fee_tvl_24h": 0.4389,
+      "organic_score": 84,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T10:22:51.684Z",
+      "out_of_range_since": "2026-04-07T10:44:14.226Z",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T10:44:40.938Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T10:44:40.938Z: trailing TP"
+      ],
+      "peak_pnl_pct": 0,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "67dd1SiAyPinLzfJteLd2vrpwsX4Spc1NiPjdFdtPR3p": {
+      "position": "67dd1SiAyPinLzfJteLd2vrpwsX4Spc1NiPjdFdtPR3p",
+      "pool": "BfQTnDrW3XmRpyKgoCRkSPvMKFRAKdMZSc4PESMxiqiL",
+      "pool_name": "Downald-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -620,
+        "max": -605,
+        "bins_below": 15,
+        "bins_above": 0
+      },
+      "amount_sol": 0.15,
+      "amount_x": 0,
+      "active_bin_at_deploy": -605,
+      "bin_step": 100,
+      "volatility": 6.71,
+      "fee_tvl_ratio": 0.733,
+      "initial_fee_tvl_24h": 0.733,
+      "organic_score": 66,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T10:50:04.988Z",
+      "out_of_range_since": "2026-04-07T11:14:11.614Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T11:44:35.454Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T11:44:35.454Z: trailing TP"
+      ],
+      "peak_pnl_pct": 0.11,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "C4G2Mowp2u64YPpH4eVhmv8CGM8YPMqQp8shgKRSBXev": {
+      "position": "C4G2Mowp2u64YPpH4eVhmv8CGM8YPMqQp8shgKRSBXev",
+      "pool": "Gx2zvTQzQgoFxvHFuqHvanmLg9qkFn654WpRNEjUZBXF",
+      "pool_name": "GAJAE-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -580,
+        "max": -557,
+        "bins_below": 23,
+        "bins_above": 0
+      },
+      "amount_sol": 0.15,
+      "amount_x": 0,
+      "active_bin_at_deploy": -557,
+      "bin_step": 100,
+      "volatility": 2.81,
+      "fee_tvl_ratio": 0.3043,
+      "initial_fee_tvl_24h": 0.3043,
+      "organic_score": 65,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T11:46:39.498Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-07T12:47:30.972Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-07T12:47:30.972Z: low yield: fee/TVL 0.00% < min 7% (age: 60m)"
+      ],
+      "peak_pnl_pct": 0,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "573gE9KTVkdryEkBHafvQPxWM2RP5sQBUTZxGg3t9UEm": {
+      "position": "573gE9KTVkdryEkBHafvQPxWM2RP5sQBUTZxGg3t9UEm",
+      "pool": "BfQTnDrW3XmRpyKgoCRkSPvMKFRAKdMZSc4PESMxiqiL",
+      "pool_name": "Downald-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -579,
+        "max": -554,
+        "bins_below": 25,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -554,
+      "bin_step": 100,
+      "volatility": 4.4,
+      "fee_tvl_ratio": 0.4244,
+      "initial_fee_tvl_24h": 0.4244,
+      "organic_score": 68,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-07T12:54:00.575Z",
+      "out_of_range_since": "2026-04-07T12:55:38.561Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-08T00:59:46.401Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)"
+      ],
+      "peak_pnl_pct": 0,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "A3nhaZHmfBC8z1t6Rt8q923o3oEJKDBVrj9VS831zW2a": {
+      "position": "A3nhaZHmfBC8z1t6Rt8q923o3oEJKDBVrj9VS831zW2a",
+      "pool": "7bHEH5KgKJHdFjRNpJ4DFsjxWKxtmELQaA9g3WcZpWFJ",
+      "pool_name": "BURNIE-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -344,
+        "max": -328,
+        "bins_below": 16,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -328,
+      "bin_step": 100,
+      "volatility": 0.83,
+      "fee_tvl_ratio": 0.1006,
+      "initial_fee_tvl_24h": 0.1006,
+      "organic_score": 88,
+      "initial_value_usd": 38.25,
+      "signal_snapshot": null,
+      "deployed_at": "2026-04-08T01:02:26.671Z",
+      "out_of_range_since": "2026-04-08T02:04:17.030Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-08T02:08:15.451Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-08T02:08:15.451Z: Trailing TP: peak 3.30% → current 1.62% (dropped 1.68% >= 0.5%)"
+      ],
+      "peak_pnl_pct": 3.3,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": true
+    },
+    "HMqaCzyTetahM2Y6wHbavRcLgyyj2ZoPy5zF55MX6Yfs": {
+      "position": "HMqaCzyTetahM2Y6wHbavRcLgyyj2ZoPy5zF55MX6Yfs",
+      "pool": "7bHEH5KgKJHdFjRNpJ4DFsjxWKxtmELQaA9g3WcZpWFJ",
+      "pool_name": "BURNIE-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -350,
+        "max": -311,
+        "bins_below": 39,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -311,
+      "bin_step": 100,
+      "volatility": 0.57,
+      "fee_tvl_ratio": 0.0803,
+      "initial_fee_tvl_24h": 0.0803,
+      "organic_score": 88,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "custom_ratio_spot",
+        "name": "Custom Ratio Spot",
+        "author": "meridian",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Any token. Ratio expresses directional bias."
+        },
+        "entry": {
+          "condition": "Directional view on token",
+          "single_side": null,
+          "notes": "75% token = bullish (sell on pump out of range). 75% SOL = bearish/DCA-in (buy on dip). Set bins_below:bins_above proportional to ratio."
+        },
+        "range": {
+          "type": "custom",
+          "notes": "bins_below:bins_above ratio matches token:SOL ratio. E.g., 75% token → ~52 bins below, ~17 bins above."
+        },
+        "exit": {
+          "take_profit_pct": 10,
+          "notes": "Close when OOR or TP hit. Re-deploy with updated ratio based on new momentum signals."
+        },
+        "best_for": "Expressing directional bias while earning fees both ways",
+        "added_at": "2026-04-07T02:04:19.065Z",
+        "updated_at": "2026-04-07T02:04:19.066Z"
+      },
+      "deployed_at": "2026-04-08T06:09:55.181Z",
+      "out_of_range_since": "2026-04-08T06:13:00.427Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-08T06:27:06.138Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)"
+      ],
+      "peak_pnl_pct": 0.48,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "EZWLS3fsbxnt32CETgKSpbvZJeFhd5hsBrsJRo295mdq": {
+      "position": "EZWLS3fsbxnt32CETgKSpbvZJeFhd5hsBrsJRo295mdq",
+      "pool": "7ik5kwcwjD9W22THNqU5spBA9pELjhzfPg2eGvKtNEGn",
+      "pool_name": "CHIBI- SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -709,
+        "max": -469,
+        "bins_below": 240,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -469,
+      "bin_step": 125,
+      "volatility": 1.7,
+      "fee_tvl_ratio": 0.0692,
+      "initial_fee_tvl_24h": 0.0692,
+      "organic_score": 67,
+      "initial_value_usd": 29.46,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "evil_panda",
+        "name": "Evil Panda",
+        "author": "EvilPanda",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125.",
+          "min_mcap": 250000,
+          "min_volume_24h": 1000000,
+          "min_fees_sol": 30,
+          "max_bundling_pct": 60,
+          "max_top10_pct": 30,
+          "max_pool_tvl": 500000
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "15m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "15m supertrend flips bullish (price breaks above supertrend) —use calculate_supertrend(timeframe=15m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "custom",
+          "notes": "Wide range: -86% to -94% below current price, ~240+ bins.All bins_below, bins_above=0."
+        },
+        "exit": {
+          "timeframe": "15m",
+          "min_confluence": 2,
+          "conditions": [
+            {
+              "indicator": "rsi",
+              "period": 2,
+              "op": "gt",
+              "value": 90
+            },
+            {
+              "indicator": "bb_upper_cross"
+            },
+            {
+              "indicator": "macd_crossover",
+              "direction": "BULLISH"
+            }
+          ],
+          "notes": "Do NOT exit on just one signal alone. Do NOT exit just because the position is OOR — hold through the dump and wait for recovery."
+        },
+        "best_for": "Capturing fees during large token dumps. Be the final exit liquidity for panicked sellers, bundlers, and stop losses. Earn fees on the way down, exit on the recovery signal.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-08T06:29:16.838Z",
+      "out_of_range_since": "2026-04-08T06:34:37.375Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-08T06:40:43.123Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)"
+      ],
+      "peak_pnl_pct": 1.83,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "2awnkJpnyDaDkcaRouEK5xLUZUENziZ3m8TC5pG3fVhq": {
+      "position": "2awnkJpnyDaDkcaRouEK5xLUZUENziZ3m8TC5pG3fVhq",
+      "pool": "EgGACLzNtvTWfjWopkMbbcRsUPAaSCcgPjbNqUCcLUCJ",
+      "pool_name": "BURNIE-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -356,
+        "max": -307,
+        "bins_below": 49,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -307,
+      "bin_step": 100,
+      "volatility": 2.12,
+      "fee_tvl_ratio": 0.0503,
+      "initial_fee_tvl_24h": 0.0503,
+      "organic_score": 88,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "evil_panda",
+        "name": "Evil Panda",
+        "author": "EvilPanda",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125.",
+          "min_mcap": 250000,
+          "min_volume_24h": 1000000,
+          "min_fees_sol": 30,
+          "max_bundling_pct": 60,
+          "max_top10_pct": 30,
+          "max_pool_tvl": 500000
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "custom",
+          "notes": "Wide range: -86% to -94% below current price, ~240+ bins.All bins_below, bins_above=0."
+        },
+        "exit": {
+          "timeframe": "30m",
+          "min_confluence": 2,
+          "conditions": [
+            {
+              "indicator": "rsi",
+              "period": 2,
+              "op": "gt",
+              "value": 90
+            },
+            {
+              "indicator": "bb_upper_cross"
+            },
+            {
+              "indicator": "macd_crossover",
+              "direction": "BULLISH"
+            }
+          ],
+          "notes": "Do NOT exit on just one signal alone. Do NOT exit just because the position is OOR — hold through the dump and wait for recovery."
+        },
+        "best_for": "Capturing fees during large token dumps. Be the final exit liquidity for panicked sellers, bundlers, and stop losses. Earn fees on the way down, exit on the recovery signal.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-08T06:44:20.443Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-08T07:45:08.095Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-08T07:45:08.095Z: ⚡ Trailing TP: Low yield: fee/TVL 3.71% < min 7% (age: 60m)"
+      ],
+      "peak_pnl_pct": 0.22,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "GGWAKEwNcvRkd3L64w8do9yEcongSbxZgR6SjWSXf916": {
+      "position": "GGWAKEwNcvRkd3L64w8do9yEcongSbxZgR6SjWSXf916",
+      "pool": "2RX1ZogEMsjv1YjMF3m5U1DN7gVCtSLaQHs27F17ECve",
+      "pool_name": "WOJAK-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -363,
+        "max": -325,
+        "bins_below": 38,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -325,
+      "bin_step": 80,
+      "volatility": 0.46,
+      "fee_tvl_ratio": 0.0884,
+      "initial_fee_tvl_24h": 0.0884,
+      "organic_score": 74,
+      "initial_value_usd": 25.26,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "evil_panda",
+        "name": "Evil Panda",
+        "author": "EvilPanda",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125.",
+          "min_mcap": 250000,
+          "min_volume_24h": 1000000,
+          "min_fees_sol": 30,
+          "max_bundling_pct": 60,
+          "max_top10_pct": 30,
+          "max_pool_tvl": 500000
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "custom",
+          "notes": "Wide range: -86% to -94% below current price, ~240+ bins.All bins_below, bins_above=0."
+        },
+        "exit": {
+          "timeframe": "30m",
+          "min_confluence": 2,
+          "conditions": [
+            {
+              "indicator": "rsi",
+              "period": 2,
+              "op": "gt",
+              "value": 90
+            },
+            {
+              "indicator": "bb_upper_cross"
+            },
+            {
+              "indicator": "macd_crossover",
+              "direction": "BULLISH"
+            }
+          ],
+          "notes": "Do NOT exit on just one signal alone. Do NOT exit just because the position is OOR — hold through the dump and wait for recovery."
+        },
+        "best_for": "Capturing fees during large token dumps. Be the final exit liquidity for panicked sellers, bundlers, and stop losses. Earn fees on the way down, exit on the recovery signal.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-08T07:53:29.359Z",
+      "out_of_range_since": "2026-04-08T08:16:48.927Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-08T08:47:38.901Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-08T08:47:38.901Z: Trailing TP: Out of range (above) for 30m (limit: 30m)"
+      ],
+      "peak_pnl_pct": 0.37,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "EQcnmyswWZ8Pv5aDh222wfy6hgjvQC8L7NuTY5mnaJMd": {
+      "position": "EQcnmyswWZ8Pv5aDh222wfy6hgjvQC8L7NuTY5mnaJMd",
+      "pool": "FCL8pjNQsDAggZVczYfnn6tfbYoMnJykGT2cpdTULAxB",
+      "pool_name": "PENGUIN-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -436,
+        "max": -393,
+        "bins_below": 43,
+        "bins_above": 0
+      },
+      "amount_sol": 0.13,
+      "amount_x": 0,
+      "active_bin_at_deploy": -393,
+      "bin_step": 80,
+      "volatility": 1.2,
+      "fee_tvl_ratio": 0.1074,
+      "initial_fee_tvl_24h": 0.1074,
+      "organic_score": 67,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "evil_panda",
+        "name": "Evil Panda",
+        "author": "EvilPanda",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125.",
+          "min_mcap": 250000,
+          "min_volume_24h": 1000000,
+          "min_fees_sol": 30,
+          "max_bundling_pct": 60,
+          "max_top10_pct": 30,
+          "max_pool_tvl": 500000
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "custom",
+          "notes": "Wide range: -86% to -94% below current price, ~240+ bins.All bins_below, bins_above=0."
+        },
+        "exit": {
+          "timeframe": "30m",
+          "min_confluence": 2,
+          "conditions": [
+            {
+              "indicator": "rsi",
+              "period": 2,
+              "op": "gt",
+              "value": 90
+            },
+            {
+              "indicator": "bb_upper_cross"
+            },
+            {
+              "indicator": "macd_crossover",
+              "direction": "BULLISH"
+            }
+          ],
+          "notes": "Do NOT exit on just one signal alone. Do NOT exit just because the position is OOR — hold through the dump and wait for recovery."
+        },
+        "best_for": "Capturing fees during large token dumps. Be the final exit liquidity for panicked sellers, bundlers, and stop losses. Earn fees on the way down, exit on the recovery signal.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-08T09:10:50.981Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-08T12:52:21.662Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)"
+      ],
+      "peak_pnl_pct": 0.41,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "uAs2uG8GtUJQAfbW2Wyj5SEz2VA6kuxXdvErzwTk4Tu": {
+      "position": "uAs2uG8GtUJQAfbW2Wyj5SEz2VA6kuxXdvErzwTk4Tu",
+      "pool": "H4Zs9ZgAenVaf7YL1Cd6pUNR5SuSKcVfwNc5pXSiKu3s",
+      "pool_name": "Iroha-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -452,
+        "max": -401,
+        "bins_below": 51,
+        "bins_above": 0
+      },
+      "amount_sol": 0.25,
+      "amount_x": 0,
+      "active_bin_at_deploy": -401,
+      "bin_step": 100,
+      "volatility": 2.61,
+      "fee_tvl_ratio": 0.2473,
+      "initial_fee_tvl_24h": 0.2473,
+      "organic_score": 83,
+      "initial_value_usd": 29.38,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T04:35:45.591Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T07:18:32.595Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T07:18:32.595Z: ⚡ Trailing TP: Trailing TP: peak 2.21% → current 1.54% (dropped 0.67% >= 0.5%)"
+      ],
+      "peak_pnl_pct": 2.21,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": true
+    },
+    "CtowgV8Gqimzo5USGBRWXvXNoWsNcgLov2vCEQRZG5B3": {
+      "position": "CtowgV8Gqimzo5USGBRWXvXNoWsNcgLov2vCEQRZG5B3",
+      "pool": "7ik5kwcwjD9W22THNqU5spBA9pELjhzfPg2eGvKtNEGn",
+      "pool_name": "CHIBI- SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -461,
+        "max": -436,
+        "bins_below": 25,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -436,
+      "bin_step": 125,
+      "volatility": 2.77,
+      "fee_tvl_ratio": 0.0545,
+      "initial_fee_tvl_24h": 0.0545,
+      "organic_score": 68,
+      "initial_value_usd": 26.46,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T06:26:02.596Z",
+      "out_of_range_since": "2026-04-09T06:50:57.106Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T06:56:56.529Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T06:56:56.529Z: Trailing TP: Out of range (above) for 5m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 0.09,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "7cKoFXxoxrVmjw7PTuVgxCeWgJkj4Kw8tU3ax3DrRSvU": {
+      "position": "7cKoFXxoxrVmjw7PTuVgxCeWgJkj4Kw8tU3ax3DrRSvU",
+      "pool": "H4Zs9ZgAenVaf7YL1Cd6pUNR5SuSKcVfwNc5pXSiKu3s",
+      "pool_name": "Iroha-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -459,
+        "max": -416,
+        "bins_below": 43,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -416,
+      "bin_step": 100,
+      "volatility": 1.59,
+      "fee_tvl_ratio": 0.2007,
+      "initial_fee_tvl_24h": 0.2007,
+      "organic_score": 84,
+      "initial_value_usd": 23.58,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T07:21:50.379Z",
+      "out_of_range_since": "2026-04-09T07:22:27.074Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T07:28:36.013Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T07:28:36.013Z: Trailing TP: Out of range (above) for 5m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 0.19,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "HcdAkPxvApjja71DgPk9ojDJVtwa2CXUcDUdrwsjat8A": {
+      "position": "HcdAkPxvApjja71DgPk9ojDJVtwa2CXUcDUdrwsjat8A",
+      "pool": "H4Zs9ZgAenVaf7YL1Cd6pUNR5SuSKcVfwNc5pXSiKu3s",
+      "pool_name": "Iroha-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -457,
+        "max": -412,
+        "bins_below": 45,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -412,
+      "bin_step": 100,
+      "volatility": 1.62,
+      "fee_tvl_ratio": 0.2743,
+      "initial_fee_tvl_24h": 0.2743,
+      "organic_score": 84,
+      "initial_value_usd": 28.47,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T07:30:43.873Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T07:38:05.058Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T07:38:05.058Z: Trailing TP: Out of range (above) for 6m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 0.3,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "AhMUq75awD5SR5rPMqbcC3dtKME49qmJn53r1ypmkJzP": {
+      "position": "AhMUq75awD5SR5rPMqbcC3dtKME49qmJn53r1ypmkJzP",
+      "pool": "ECDUCaoDkggGpsSbrE67mfZkfL7ey4LKB15GCA9qf1Qd",
+      "pool_name": "49-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -614,
+        "max": -598,
+        "bins_below": 16,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -598,
+      "bin_step": 100,
+      "volatility": 0.7,
+      "fee_tvl_ratio": 0.0641,
+      "initial_fee_tvl_24h": 0.0641,
+      "organic_score": 75,
+      "initial_value_usd": 26.38,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T07:37:03.299Z",
+      "out_of_range_since": "2026-04-09T07:37:41.545Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T07:44:41.765Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T07:44:41.765Z: Trailing TP: Out of range (above) for 6m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 0.02,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "J1UczYA1NjF7GWTCy13xuEP9pXVarFnG6hQFjLqiWs2j": {
+      "position": "J1UczYA1NjF7GWTCy13xuEP9pXVarFnG6hQFjLqiWs2j",
+      "pool": "H4Zs9ZgAenVaf7YL1Cd6pUNR5SuSKcVfwNc5pXSiKu3s",
+      "pool_name": "Iroha-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -426,
+        "max": -414,
+        "bins_below": 12,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -414,
+      "bin_step": 100,
+      "volatility": 1.74,
+      "fee_tvl_ratio": 0.2108,
+      "initial_fee_tvl_24h": 0.2108,
+      "organic_score": 84,
+      "initial_value_usd": 28.4,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T07:43:36.920Z",
+      "out_of_range_since": "2026-04-09T08:16:32.504Z",
+      "oor_direction": "below",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T08:22:20.318Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T08:22:20.318Z: Trailing TP: Out of range (below) for 5m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 1.38,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "32ZyiWLXeEf1tAw1RjRaEGHn2YZ9LdqxiyAt9pUxNMhj": {
+      "position": "32ZyiWLXeEf1tAw1RjRaEGHn2YZ9LdqxiyAt9pUxNMhj",
+      "pool": "FCL8pjNQsDAggZVczYfnn6tfbYoMnJykGT2cpdTULAxB",
+      "pool_name": "PENGUIN-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -424,
+        "max": -395,
+        "bins_below": 29,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -395,
+      "bin_step": 80,
+      "volatility": 2.68,
+      "fee_tvl_ratio": 0.24,
+      "initial_fee_tvl_24h": 0.24,
+      "organic_score": 74,
+      "initial_value_usd": 48.15,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T08:12:26.471Z",
+      "out_of_range_since": "2026-04-09T08:27:33.427Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T08:33:50.588Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T08:33:50.588Z: Trailing TP: Out of range (above) for 5m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 0.47,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "6ufkuri9R5qG2quf7NWoir9D3gQZcLQgN5AoSjTbuHKh": {
+      "position": "6ufkuri9R5qG2quf7NWoir9D3gQZcLQgN5AoSjTbuHKh",
+      "pool": "BkBejVEeozPB98HivKMsLAivHaJ8k5QGaQvg8HvoWnUM",
+      "pool_name": "Iroha-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -371,
+        "max": -343,
+        "bins_below": 28,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -343,
+      "bin_step": 125,
+      "volatility": 3.37,
+      "fee_tvl_ratio": 0.1541,
+      "initial_fee_tvl_24h": 0.1541,
+      "organic_score": 85,
+      "initial_value_usd": 36.3,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T08:24:30.118Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T08:48:32.727Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T08:48:32.727Z: Trailing TP: peak 2.53% → current 1.32% (dropped 1.21% >= 0.5%)"
+      ],
+      "peak_pnl_pct": 2.53,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": true
+    },
+    "Dd53JLL285zeYLHJdfLGcgJdVmKtnBdmBEZJZdkUkjpB": {
+      "position": "Dd53JLL285zeYLHJdfLGcgJdVmKtnBdmBEZJZdkUkjpB",
+      "pool": "7ik5kwcwjD9W22THNqU5spBA9pELjhzfPg2eGvKtNEGn",
+      "pool_name": "CHIBI- SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -453,
+        "max": -406,
+        "bins_below": 47,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -406,
+      "bin_step": 125,
+      "volatility": 7.38,
+      "fee_tvl_ratio": 0.0905,
+      "initial_fee_tvl_24h": 0.0905,
+      "organic_score": 69,
+      "initial_value_usd": 33.87,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T08:36:59.904Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T09:04:59.837Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T09:04:59.837Z: Trailing TP: peak 3.48% → current 2.91% (dropped 0.57% >= 0.5%)"
+      ],
+      "peak_pnl_pct": 3.48,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": true
+    },
+    "FAZ2ffjxUictNGRqfC9UnnF9Qtp1ZNw4FvD1hcdsEpt9": {
+      "position": "FAZ2ffjxUictNGRqfC9UnnF9Qtp1ZNw4FvD1hcdsEpt9",
+      "pool": "7ik5kwcwjD9W22THNqU5spBA9pELjhzfPg2eGvKtNEGn",
+      "pool_name": "CHIBI- SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -463,
+        "max": -415,
+        "bins_below": 48,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -415,
+      "bin_step": 125,
+      "volatility": 6.7,
+      "fee_tvl_ratio": 0.24,
+      "initial_fee_tvl_24h": 0.24,
+      "organic_score": 70,
+      "initial_value_usd": 24.74,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T09:08:29.384Z",
+      "out_of_range_since": "2026-04-09T09:16:44.885Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T09:22:28.647Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T09:22:28.647Z: Trailing TP: Out of range (above) for 5m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 0.29,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "EJxVp7om1VRSUSpv9xgN6RBG1NWZUyY1t3CUrhiWEunZ": {
+      "position": "EJxVp7om1VRSUSpv9xgN6RBG1NWZUyY1t3CUrhiWEunZ",
+      "pool": "CV1XsvfSNs2i9uSSrGH2MsGpGFpUuFgeV2WaZj9YAihL",
+      "pool_name": "PANDU-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -1068,
+        "max": -1033,
+        "bins_below": 35,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -1033,
+      "bin_step": 100,
+      "volatility": 2.49,
+      "fee_tvl_ratio": 0.07,
+      "initial_fee_tvl_24h": 0.07,
+      "organic_score": 77,
+      "initial_value_usd": 0.3,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T09:14:09.889Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T11:11:45.452Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T11:11:45.452Z: Trailing TP triggered - dropped 0.81% from peak 2.50% to current 1.69%"
+      ],
+      "peak_pnl_pct": 2.5,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": true
+    },
+    "CPdLxoNMgULXXzPnjNmsKgNjLbnrRsYDYBBnk3cgCKGC": {
+      "position": "CPdLxoNMgULXXzPnjNmsKgNjLbnrRsYDYBBnk3cgCKGC",
+      "pool": "7ik5kwcwjD9W22THNqU5spBA9pELjhzfPg2eGvKtNEGn",
+      "pool_name": "CHIBI-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -446,
+        "max": -411,
+        "bins_below": 35,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -411,
+      "bin_step": 125,
+      "volatility": 3.05,
+      "fee_tvl_ratio": 0.0622,
+      "initial_fee_tvl_24h": 0.0622,
+      "organic_score": 70,
+      "initial_value_usd": 37.5,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T09:23:54.414Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": false,
+      "closed_at": null,
+      "notes": [],
+      "peak_pnl_pct": 1.02,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "FVFxw4ECY2R5BV99La7tnWxmsZ1kuBmakn8ff2NnzEMS": {
+      "position": "FVFxw4ECY2R5BV99La7tnWxmsZ1kuBmakn8ff2NnzEMS",
+      "pool": "BkBejVEeozPB98HivKMsLAivHaJ8k5QGaQvg8HvoWnUM",
+      "pool_name": "Iroha-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -366,
+        "max": -331,
+        "bins_below": 35,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -331,
+      "bin_step": 125,
+      "volatility": 2.73,
+      "fee_tvl_ratio": 0.12,
+      "initial_fee_tvl_24h": 0.12,
+      "organic_score": 85,
+      "initial_value_usd": 38.25,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T11:13:16.294Z",
+      "out_of_range_since": "2026-04-09T11:20:47.347Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-09T11:27:00.756Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-09T11:27:00.756Z: Trailing TP: Out of range (above) for 5m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 0.5,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "93kW18dKnEjDLChp9dp2nzYm3chHux7M4Yx6wffPXsbR": {
+      "position": "93kW18dKnEjDLChp9dp2nzYm3chHux7M4Yx6wffPXsbR",
+      "pool": "BkBejVEeozPB98HivKMsLAivHaJ8k5QGaQvg8HvoWnUM",
+      "pool_name": "Iroha-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -365,
+        "max": -325,
+        "bins_below": 40,
+        "bins_above": 0
+      },
+      "amount_sol": 0.3,
+      "amount_x": 0,
+      "active_bin_at_deploy": -325,
+      "bin_step": 125,
+      "volatility": 2.53,
+      "fee_tvl_ratio": 0.1562,
+      "initial_fee_tvl_24h": 0.1562,
+      "organic_score": 85,
+      "initial_value_usd": 36.45,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "30m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-09T11:31:25.377Z",
+      "out_of_range_since": "2026-04-09T11:37:47.131Z",
+      "oor_direction": "above",
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": false,
+      "closed_at": null,
+      "notes": [],
+      "peak_pnl_pct": 0.99,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    }
+  },
+  "recentEvents": [
+    {
+      "ts": "2026-04-09T07:30:43.873Z",
+      "action": "deploy",
+      "position": "HcdAkPxvApjja71DgPk9ojDJVtwa2CXUcDUdrwsjat8A",
+      "pool_name": "Iroha-SOL"
+    },
+    {
+      "ts": "2026-04-09T07:37:03.299Z",
+      "action": "deploy",
+      "position": "AhMUq75awD5SR5rPMqbcC3dtKME49qmJn53r1ypmkJzP",
+      "pool_name": "49-SOL"
+    },
+    {
+      "ts": "2026-04-09T07:38:05.058Z",
+      "action": "close",
+      "position": "HcdAkPxvApjja71DgPk9ojDJVtwa2CXUcDUdrwsjat8A",
+      "pool_name": "Iroha-SOL",
+      "reason": "Trailing TP: Out of range (above) for 6m (limit: 5m)"
+    },
+    {
+      "ts": "2026-04-09T07:43:36.920Z",
+      "action": "deploy",
+      "position": "J1UczYA1NjF7GWTCy13xuEP9pXVarFnG6hQFjLqiWs2j",
+      "pool_name": "Iroha-SOL"
+    },
+    {
+      "ts": "2026-04-09T07:44:41.765Z",
+      "action": "close",
+      "position": "AhMUq75awD5SR5rPMqbcC3dtKME49qmJn53r1ypmkJzP",
+      "pool_name": "49-SOL",
+      "reason": "Trailing TP: Out of range (above) for 6m (limit: 5m)"
+    },
+    {
+      "ts": "2026-04-09T08:12:26.471Z",
+      "action": "deploy",
+      "position": "32ZyiWLXeEf1tAw1RjRaEGHn2YZ9LdqxiyAt9pUxNMhj",
+      "pool_name": "PENGUIN-SOL"
+    },
+    {
+      "ts": "2026-04-09T08:22:20.318Z",
+      "action": "close",
+      "position": "J1UczYA1NjF7GWTCy13xuEP9pXVarFnG6hQFjLqiWs2j",
+      "pool_name": "Iroha-SOL",
+      "reason": "Trailing TP: Out of range (below) for 5m (limit: 5m)"
+    },
+    {
+      "ts": "2026-04-09T08:24:30.118Z",
+      "action": "deploy",
+      "position": "6ufkuri9R5qG2quf7NWoir9D3gQZcLQgN5AoSjTbuHKh",
+      "pool_name": "Iroha-SOL"
+    },
+    {
+      "ts": "2026-04-09T08:33:50.589Z",
+      "action": "close",
+      "position": "32ZyiWLXeEf1tAw1RjRaEGHn2YZ9LdqxiyAt9pUxNMhj",
+      "pool_name": "PENGUIN-SOL",
+      "reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)"
+    },
+    {
+      "ts": "2026-04-09T08:36:59.904Z",
+      "action": "deploy",
+      "position": "Dd53JLL285zeYLHJdfLGcgJdVmKtnBdmBEZJZdkUkjpB",
+      "pool_name": "CHIBI- SOL"
+    },
+    {
+      "ts": "2026-04-09T08:48:32.727Z",
+      "action": "close",
+      "position": "6ufkuri9R5qG2quf7NWoir9D3gQZcLQgN5AoSjTbuHKh",
+      "pool_name": "Iroha-SOL",
+      "reason": "Trailing TP: peak 2.53% → current 1.32% (dropped 1.21% >= 0.5%)"
+    },
+    {
+      "ts": "2026-04-09T09:04:59.837Z",
+      "action": "close",
+      "position": "Dd53JLL285zeYLHJdfLGcgJdVmKtnBdmBEZJZdkUkjpB",
+      "pool_name": "CHIBI- SOL",
+      "reason": "Trailing TP: peak 3.48% → current 2.91% (dropped 0.57% >= 0.5%)"
+    },
+    {
+      "ts": "2026-04-09T09:08:29.384Z",
+      "action": "deploy",
+      "position": "FAZ2ffjxUictNGRqfC9UnnF9Qtp1ZNw4FvD1hcdsEpt9",
+      "pool_name": "CHIBI- SOL"
+    },
+    {
+      "ts": "2026-04-09T09:14:09.889Z",
+      "action": "deploy",
+      "position": "EJxVp7om1VRSUSpv9xgN6RBG1NWZUyY1t3CUrhiWEunZ",
+      "pool_name": "PANDU-SOL"
+    },
+    {
+      "ts": "2026-04-09T09:22:28.647Z",
+      "action": "close",
+      "position": "FAZ2ffjxUictNGRqfC9UnnF9Qtp1ZNw4FvD1hcdsEpt9",
+      "pool_name": "CHIBI- SOL",
+      "reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)"
+    },
+    {
+      "ts": "2026-04-09T09:23:54.414Z",
+      "action": "deploy",
+      "position": "CPdLxoNMgULXXzPnjNmsKgNjLbnrRsYDYBBnk3cgCKGC",
+      "pool_name": "CHIBI-SOL"
+    },
+    {
+      "ts": "2026-04-09T11:11:45.452Z",
+      "action": "close",
+      "position": "EJxVp7om1VRSUSpv9xgN6RBG1NWZUyY1t3CUrhiWEunZ",
+      "pool_name": "PANDU-SOL",
+      "reason": "Trailing TP triggered - dropped 0.81% from peak 2.50% to current 1.69%"
+    },
+    {
+      "ts": "2026-04-09T11:13:16.295Z",
+      "action": "deploy",
+      "position": "FVFxw4ECY2R5BV99La7tnWxmsZ1kuBmakn8ff2NnzEMS",
+      "pool_name": "Iroha-SOL"
+    },
+    {
+      "ts": "2026-04-09T11:27:00.756Z",
+      "action": "close",
+      "position": "FVFxw4ECY2R5BV99La7tnWxmsZ1kuBmakn8ff2NnzEMS",
+      "pool_name": "Iroha-SOL",
+      "reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)"
+    },
+    {
+      "ts": "2026-04-09T11:31:25.377Z",
+      "action": "deploy",
+      "position": "93kW18dKnEjDLChp9dp2nzYm3chHux7M4Yx6wffPXsbR",
+      "pool_name": "Iroha-SOL"
+    }
+  ],
+  "lastUpdated": "2026-04-09T11:37:47.131Z",
+  "_lastBriefingDate": "2026-04-09"
+}

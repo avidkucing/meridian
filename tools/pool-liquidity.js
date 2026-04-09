@@ -52,7 +52,7 @@ export async function getPoolLiquidity({ pool_address, rangeBelow = 50, rangeAbo
   const activeBin = await pool.getActiveBin();
   const activeBinId = activeBin.binId;
   const binStep = pool.lbPair.binStep;
-  const currentPrice = pool.fromPricePerLamport(Number(activeBin.price));
+  const currentPrice = Number(pool.fromPricePerLamport(Number(activeBin.price)));
 
   const minBinId = activeBinId - rangeBelow;
   const maxBinId = activeBinId + rangeAbove;
@@ -95,7 +95,7 @@ export async function getPoolLiquidity({ pool_address, rangeBelow = 50, rangeAbo
 
   const bins = binsArray.map((bin) => {
     const solAmount = bin.amountY / lamportsPerSol;
-    const price = pool.fromPricePerLamport(Number(bin.price));
+    const price = Number(pool.fromPricePerLamport(Number(bin.price)));
     totalSol += solAmount;
     if (solAmount > maxBinSol) {
       maxBinSol = solAmount;

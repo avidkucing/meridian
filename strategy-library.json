@@ -1,0 +1,200 @@
+{
+  "strategies": {
+    "custom_ratio_spot": {
+      "id": "custom_ratio_spot",
+      "name": "Custom Ratio Spot",
+      "author": "meridian",
+      "lp_strategy": "spot",
+      "token_criteria": {
+        "notes": "Any token. Ratio expresses directional bias."
+      },
+      "entry": {
+        "condition": "Directional view on token",
+        "single_side": null,
+        "notes": "75% token = bullish (sell on pump out of range). 75% SOL = bearish/DCA-in (buy on dip). Set bins_below:bins_above proportional to ratio."
+      },
+      "range": {
+        "type": "custom",
+        "notes": "bins_below:bins_above ratio matches token:SOL ratio. E.g., 75% token → ~52 bins below, ~17 bins above."
+      },
+      "exit": {
+        "take_profit_pct": 10,
+        "notes": "Close when OOR or TP hit. Re-deploy with updated ratio based on new momentum signals."
+      },
+      "best_for": "Expressing directional bias while earning fees both ways",
+      "added_at": "2026-04-07T02:04:19.065Z",
+      "updated_at": "2026-04-07T02:04:19.066Z"
+    },
+    "single_sided_reseed": {
+      "id": "single_sided_reseed",
+      "name": "Single-Sided Bid-Ask + Re-seed",
+      "author": "meridian",
+      "lp_strategy": "bid_ask",
+      "token_criteria": {
+        "notes": "Volatile tokens with strong narrative. Must have active volume."
+      },
+      "entry": {
+        "condition": "Deploy token-only (amount_x only, amount_y=0) bid-ask, bins below active bin only",
+        "single_side": "token",
+        "notes": "As price drops through bins, token sold for SOL. Bid-ask concentrates at bottom edge."
+      },
+      "range": {
+        "type": "default",
+        "bins_below_pct": 100,
+        "notes": "All bins below active bin. bins_above=0."
+      },
+      "exit": {
+        "notes": "When OOR downside: close_position(skip_swap=true) → redeploy token-only bid-ask at new lower price. Do NOT swap to SOL. Full close only when token dead or after N re-seeds with declining performance."
+      },
+      "best_for": "Riding volatile tokens down without cutting losses. DCA out via LP.",
+      "added_at": "2026-04-07T02:04:19.066Z",
+      "updated_at": "2026-04-07T02:04:19.066Z"
+    },
+    "fee_compounding": {
+      "id": "fee_compounding",
+      "name": "Fee Compounding",
+      "author": "meridian",
+      "lp_strategy": "any",
+      "token_criteria": {
+        "notes": "Stable volume pools with consistent fee generation."
+      },
+      "entry": {
+        "condition": "Deploy normally with any shape",
+        "notes": "Strategy is about management, not entry shape."
+      },
+      "range": {
+        "type": "default",
+        "notes": "Standard range for the pair."
+      },
+      "exit": {
+        "notes": "When unclaimed fees > $5 AND in range: claim_fees → add_liquidity back into same position. Normal close rules otherwise."
+      },
+      "best_for": "Maximizing yield on stable, range-bound pools via compounding",
+      "added_at": "2026-04-07T02:04:19.066Z",
+      "updated_at": "2026-04-07T02:04:19.066Z"
+    },
+    "multi_layer": {
+      "id": "multi_layer",
+      "name": "Multi-Layer",
+      "author": "meridian",
+      "lp_strategy": "mixed",
+      "token_criteria": {
+        "notes": "High volume pools. Layer multiple shapes into ONE position via addLiquidityByStrategy to sculpt a composite distribution."
+      },
+      "entry": {
+        "condition": "Create ONE position, then layer additional shapes onto it with add-liquidity. Each layer adds a different strategy/shape to the same position, compositing them.",
+        "notes": "Step 1: deploy (creates position with first shape). Step 2+: add-liquidity to same position with different shapes. All layers share the same bin range but different distribution curves stack on top of each other.",
+        "example_patterns": {
+          "smooth_edge": "Deploy Bid-Ask (edges) → add-liquidity Spot (fills the middle gap). 2 layers, 1 position.",
+          "full_composite": "Deploy Bid-Ask (edges) → add-liquidity Spot (middle) → add-liquidity Curve (center boost). 3 layers, 1 position.",
+          "edge_heavy": "Deploy Bid-Ask → add-liquidity Bid-Ask again (double edge weight). 2 layers, 1 position."
+        }
+      },
+      "range": {
+        "type": "custom",
+        "notes": "All layers share the position's bin range (set at deploy). Choose range wide enough for the widest layer needed."
+      },
+      "exit": {
+        "notes": "Single position — one close, one claim. The composite shape means fees earned reflect ALL layers combined."
+      },
+      "best_for": "Creating custom liquidity distributions by stacking shapes in one position. Single position to manage.",
+      "added_at": "2026-04-07T02:04:19.066Z",
+      "updated_at": "2026-04-07T02:04:19.066Z"
+    },
+    "partial_harvest": {
+      "id": "partial_harvest",
+      "name": "Partial Harvest",
+      "author": "meridian",
+      "lp_strategy": "any",
+      "token_criteria": {
+        "notes": "High fee pools where taking profit incrementally is preferred."
+      },
+      "entry": {
+        "condition": "Deploy normally",
+        "notes": "Strategy is about progressive profit-taking, not entry."
+      },
+      "range": {
+        "type": "default",
+        "notes": "Standard range."
+      },
+      "exit": {
+        "take_profit_pct": 10,
+        "notes": "When total return >= 10% of deployed capital: withdraw_liquidity(bps=5000) to take 50% off. Remaining 50% keeps running. Repeat at next threshold."
+      },
+      "best_for": "Locking in profits without fully exiting winning positions",
+      "added_at": "2026-04-07T02:04:19.066Z",
+      "updated_at": "2026-04-07T02:04:19.066Z"
+    },
+    "spot_in_a_pump": {
+      "id": "spot_in_a_pump",
+      "name": "Spot in a Pump",
+      "author": "Avid",
+      "lp_strategy": "spot",
+      "token_criteria": {
+        "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+      },
+      "entry": {
+        "condition": "Token near perceived top after large pump.",
+        "entry_signal": {
+          "indicator": "supertrend",
+          "timeframe": "30m",
+          "require": { "flipped": true, "direction": "BULLISH" }
+        },
+        "single_side": "SOL",
+        "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+      },
+      "range": {
+        "type": "default",
+        "notes": "Use TA recomended bin, but never below user binsBelow config. Always use bins_above=0."
+      },
+      "exit": {
+        "notes": "Use the user config."
+      },
+      "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+      "added_at": "2026-04-08T00:00:00.000Z",
+      "updated_at": "2026-04-08T00:00:00.000Z"
+    },
+    "evil_panda": {
+      "id": "evil_panda",
+      "name": "Evil Panda",
+      "author": "EvilPanda",
+      "lp_strategy": "spot",
+      "token_criteria": {
+        "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125.",
+        "min_mcap": 250000,
+        "min_volume_24h": 1000000,
+        "min_fees_sol": 30,
+        "max_bundling_pct": 60,
+        "max_top10_pct": 30,
+        "max_pool_tvl": 500000
+      },
+      "entry": {
+        "condition": "Token near perceived top after large pump.",
+        "entry_signal": {
+          "indicator": "supertrend",
+          "timeframe": "30m",
+          "require": { "flipped": true, "direction": "BULLISH" }
+        },
+        "single_side": "SOL",
+        "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+      },
+      "range": {
+        "type": "custom",
+        "notes": "Wide range: -86% to -94% below current price, ~240+ bins.All bins_below, bins_above=0."
+      },
+      "exit": {
+        "timeframe": "30m",
+        "min_confluence": 2,
+        "conditions": [
+          { "indicator": "rsi", "period": 2, "op": "gt", "value": 90 },
+          { "indicator": "bb_upper_cross" },
+          { "indicator": "macd_crossover", "direction": "BULLISH" }
+        ],
+        "notes": "Do NOT exit on just one signal alone. Do NOT exit just because the position is OOR — hold through the dump and wait for recovery."
+      },
+      "best_for": "Capturing fees during large token dumps. Be the final exit liquidity for panicked sellers, bundlers, and stop losses. Earn fees on the way down, exit on the recovery signal.",
+      "added_at": "2026-04-08T00:00:00.000Z",
+      "updated_at": "2026-04-08T00:00:00.000Z"
+    }
+  }
+}
