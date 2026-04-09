@@ -12,11 +12,11 @@ import { log } from "./logger.js";
 const STRATEGY_FILE = "./strategy-library.json";
 
 function load() {
-  if (!fs.existsSync(STRATEGY_FILE)) return { active: null, strategies: {} };
+  if (!fs.existsSync(STRATEGY_FILE)) return { strategies: {} };
   try {
     return JSON.parse(fs.readFileSync(STRATEGY_FILE, "utf8"));
   } catch {
-    return { active: null, strategies: {} };
+    return { strategies: {} };
   }
 }
 
@@ -105,7 +105,6 @@ function ensureDefaultStrategies() {
     }
   }
   if (added) {
-    if (!db.active) db.active = "custom_ratio_spot";
     save(db);
     log("strategy", "Preloaded default strategies");
   }
@@ -153,12 +152,9 @@ export function addStrategy({
     updated_at: new Date().toISOString(),
   };
 
-  // Auto-set as active if it's the first strategy
-  if (!db.active) db.active = slug;
-
   save(db);
   log("strategy", `Strategy saved: ${name} (${slug})`);
-  return { saved: true, id: slug, name, active: db.active === slug };
+  return { saved: true, id: slug, name };
 }
 
 /**
@@ -172,10 +168,9 @@ export function listStrategies() {
     author: s.author,
     lp_strategy: s.lp_strategy,
     best_for: s.best_for,
-    active: db.active === s.id,
     added_at: s.added_at?.slice(0, 10),
   }));
-  return { active: db.active, count: strategies.length, strategies };
+  return { count: strategies.length, strategies };
 }
 
 /**
@@ -186,19 +181,27 @@ export function getStrategy({ id }) {
   const db = load();
   const strategy = db.strategies[id];
   if (!strategy) return { error: `Strategy "${id}" not found`, available: Object.keys(db.strategies) };
-  return { ...strategy, is_active: db.active === id };
+  return strategy;
 }
 
 /**
- * Set the active strategy used during screening cycles.
+ * Set the active strategy — writes to user-config.json (single source of truth).
  */
 export function setActiveStrategy({ id }) {
   if (!id) return { error: "id required" };
   const db = load();
   if (!db.strategies[id]) return { error: `Strategy "${id}" not found`, available: Object.keys(db.strategies) };
-  db.active = id;
-  save(db);
-  log("strategy", `Active strategy set to: ${db.strategies[id].name}`);
+
+  // Write to user-config.json
+  const USER_CONFIG = "./user-config.json";
+  let userConfig = {};
+  try {
+    userConfig = JSON.parse(fs.readFileSync(USER_CONFIG, "utf8"));
+  } catch { /* no user-config */ }
+  userConfig.strategy = id;
+  fs.writeFileSync(USER_CONFIG, JSON.stringify(userConfig, null, 2));
+
+  log("strategy", `Active strategy set to: ${db.strategies[id].name} (via user-config.json)`);
   return { active: id, name: db.strategies[id].name };
 }
 
@@ -211,17 +214,32 @@ export function removeStrategy({ id }) {
   if (!db.strategies[id]) return { error: `Strategy "${id}" not found` };
   const name = db.strategies[id].name;
   delete db.strategies[id];
-  if (db.active === id) db.active = Object.keys(db.strategies)[0] || null;
   save(db);
   log("strategy", `Strategy removed: ${name}`);
-  return { removed: true, id, name, new_active: db.active };
+  return { removed: true, id, name };
 }
 
 /**
- * Get the currently active strategy — used by screening cycle.
+ * Get the currently active strategy — source of truth is user-config.json.
+ * Returns null if no valid strategy is configured.
  */
 export function getActiveStrategy() {
   const db = load();
-  if (!db.active || !db.strategies[db.active]) return null;
-  return db.strategies[db.active];
+
+  // Read strategy ID from user-config.json
+  let userConfig = {};
+  try {
+    userConfig = JSON.parse(fs.readFileSync("./user-config.json", "utf8"));
+  } catch { /* no user-config */ }
+
+  const strategyId = userConfig.strategy || null;
+  if (!strategyId) {
+    log("warn", "No strategy configured in user-config.json. Set \"strategy\" to a valid strategy ID.");
+    return null;
+  }
+  if (!db.strategies[strategyId]) {
+    log("warn", `Strategy "${strategyId}" not found in strategy-library.json. Available: ${Object.keys(db.strategies).join(", ")}`);
+    return null;
+  }
+  return db.strategies[strategyId];
 }

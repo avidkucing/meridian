@@ -107,6 +107,7 @@ export async function deployPosition({
   fee_tvl_ratio,
   organic_score,
   initial_value_usd,
+  strategy_snapshot,
 }) {
   pool_address = normalizeMint(pool_address);
   const activeStrategy = strategy || config.strategy.strategy;
@@ -256,6 +257,7 @@ export async function deployPosition({
       amount_x: finalAmountX,
       active_bin: activeBin.binId,
       initial_value_usd,
+      strategy_snapshot: strategy_snapshot || null,
     });
 
     const actualBinStep = pool.lbPair.binStep;
@@ -462,8 +464,17 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
         const tracked = getTrackedPosition(positionAddress);
         const isOOR = pool.outOfRange || pool.positionsOutOfRange?.includes(positionAddress);
 
-        if (isOOR) markOutOfRange(positionAddress);
-        else markInRange(positionAddress);
+        if (isOOR) {
+          // Determine direction: activeBin > upperBin → above, activeBin < lowerBin → below
+          const binData = binDataByPool[pool.poolAddress]?.[positionAddress];
+          const lowerBin = binData?.lowerBinId ?? tracked?.bin_range?.min ?? null;
+          const upperBin = binData?.upperBinId ?? tracked?.bin_range?.max ?? null;
+          const activeBin = binData?.poolActiveBinId ?? tracked?.bin_range?.active ?? null;
+          let oorDir = null;
+          if (activeBin != null && upperBin != null && activeBin > upperBin) oorDir = "above";
+          else if (activeBin != null && lowerBin != null && activeBin < lowerBin) oorDir = "below";
+          markOutOfRange(positionAddress, oorDir);
+        } else markInRange(positionAddress);
 
         // Bin data: from supplemental PnL call (OOR) or tracked state (in-range)
         const binData = binDataByPool[pool.poolAddress]?.[positionAddress];
@@ -581,6 +592,7 @@ export async function getMyPositions({ force = false, silent = false } = {}) {
             : null,
           age_minutes:        binData?.createdAt ? Math.floor((Date.now() - binData.createdAt * 1000) / 60000) : ageFromState,
           minutes_out_of_range: minutesOutOfRange(positionAddress),
+          oor_direction:      getTrackedPosition(positionAddress)?.oor_direction || null,
           instruction:        tracked?.instruction ?? null,
         });
       }

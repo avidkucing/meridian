@@ -11,11 +11,12 @@ import { evolveThresholds, getPerformanceSummary } from "./lessons.js";
 import { registerCronRestarter } from "./tools/executor.js";
 import { startPolling, stopPolling, sendMessage, sendHTML, notifyOutOfRange, isEnabled as telegramEnabled, createLiveMessage } from "./telegram.js";
 import { generateBriefing } from "./briefing.js";
-import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
+import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop, queueSlConfirmation, resolveSlConfirmation, hasPendingSlConfirmation } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
 import { checkSmartWalletsOnPool } from "./smart-wallets.js";
 import { getTokenNarrative, getTokenInfo } from "./tools/token.js";
+import { calculateBinsFromTA, calculateSupertrend, calculateRSI, calculateMACD, calculateBollingerBands, fetchOHLCV } from "./tools/technical-analysis.js";
 
 log("startup", "DLMM LP Agent starting...");
 log("startup", `Mode: ${process.env.DRY_RUN === "true" ? "DRY RUN" : "LIVE"}`);
@@ -200,7 +201,8 @@ export async function runManagementCycle({ silent = false } = {}) {
       if (!p.pnl_pct_suspicious && queuePeakConfirmation(p.position, p.pnl_pct)) {
         schedulePeakConfirmation(p.position);
       }
-      const exit = updatePnlAndCheckExits(p.position, p, config.management);
+      const tracked = getTrackedPosition(p.position);
+      const exit = updatePnlAndCheckExits(p.position, p, config.management, tracked?.strategy_snapshot || null);
       if (exit) {
         if (exit.action === "TRAILING_TP" && exit.needs_confirmation) {
           if (queueTrailingDropConfirmation(p.position, exit.peak_pnl_pct, exit.current_pnl_pct, config.management.trailingDropPct)) {
@@ -228,9 +230,23 @@ export async function runManagementCycle({ silent = false } = {}) {
         continue;
       }
 
+      // Get tracked position once for all rules below
+      const tracked = getTrackedPosition(p.position);
+      const deployedStrategy = tracked?.strategy_snapshot;
+
+      // Generic ta_exit: if strategy defines exit.conditions, suppress all auto-close rules (1-5)
+      // and only claim fees or stay
+      if (deployedStrategy?.exit?.conditions) {
+        if ((p.unclaimed_fees_usd ?? 0) >= config.management.minClaimAmount) {
+          actionMap.set(p.position, { action: "CLAIM" });
+        } else {
+          actionMap.set(p.position, { action: "STAY" });
+        }
+        continue;
+      }
+
       // Sanity-check PnL against tracked initial deposit — API sometimes returns bad data
       // giving -99% PnL which would incorrectly trigger stop loss
-      const tracked = getTrackedPosition(p.position);
       const pnlSuspect = (() => {
         if (p.pnl_pct == null) return false;
         if (p.pnl_pct > -90) return false; // only flag extreme negatives
@@ -280,13 +296,66 @@ export async function runManagementCycle({ silent = false } = {}) {
       actionMap.set(p.position, { action: "STAY" });
     }
 
+    // ── Generic ta_exit evaluator — runs after main actionMap loop ──
+    for (const p of positionData) {
+      if (actionMap.get(p.position)?.action !== "STAY") continue;
+      const tracked = getTrackedPosition(p.position);
+      const exit = tracked?.strategy_snapshot?.exit;
+      const taExit = exit?.conditions ? { timeframe: exit.timeframe, min_confluence: exit.min_confluence, conditions: exit.conditions } : null;
+      if (!taExit) continue;
+
+      try {
+        // Compute start_time to fetch enough candles for MACD (needs 35 candles)
+        const timeframeMinutes = { "5m": 5, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "12h": 720, "24h": 1440 }[taExit.timeframe] ?? 30;
+        const candlesNeeded = Math.max(35, taExit.conditions.find(c => c.indicator === "rsi")?.period ?? 14) + 10;
+        const totalMinutes = candlesNeeded * timeframeMinutes;
+        const endTime = Math.floor(Date.now() / 1000);
+        const startTime = endTime - (totalMinutes * 60);
+
+        const candles = await fetchOHLCV({ poolAddress: p.pool, timeframe: taExit.timeframe, startTime, endTime });
+        if (candles.length < 3) continue;
+        const rsi = taExit.conditions.some(c => c.indicator === "rsi")
+          ? calculateRSI(candles, taExit.conditions.find(c => c.indicator === "rsi").period)
+          : null;
+        const macd = taExit.conditions.some(c => c.indicator === "macd_crossover")
+          ? calculateMACD(candles)
+          : null;
+        const bb = taExit.conditions.some(c => c.indicator === "bb_upper_cross")
+          ? calculateBollingerBands(candles)
+          : null;
+
+        // Evaluate each condition
+        const price = p.current_price ?? null;
+        const results = taExit.conditions.map(c => {
+          if (c.indicator === "rsi" && rsi) return c.op === "gt" ? rsi.rsi > c.value : false;
+          if (c.indicator === "bb_upper_cross" && bb) return price != null && price > bb.upperBand;
+          if (c.indicator === "macd_crossover" && macd) return macd.crossover === c.direction;
+          return false;
+        });
+
+        const met = results.filter(Boolean).length;
+        if (met >= taExit.min_confluence) {
+          const signals = taExit.conditions.filter((c, i) => results[i]).map(c => c.indicator).join(" + ");
+          actionMap.set(p.position, {
+            action: "CLOSE",
+            rule: "ta_exit",
+            reason: `${tracked.strategy} ta_exit: ${signals} (${met}/${taExit.min_confluence} confluence)`,
+          });
+          log("cron", `TA exit triggered for ${p.pair}: ${signals}`);
+        }
+      } catch (e) {
+        log("cron_warn", `TA exit check failed for ${p.pair}: ${e.message}\n  pool: ${p.pool}, timeframe: ${taExit.timeframe}\n  stack: ${e.stack}`);
+      }
+    }
+
     // ── Build JS report ──────────────────────────────────────────────
     const totalValue = positionData.reduce((s, p) => s + (p.total_value_usd ?? 0), 0);
     const totalUnclaimed = positionData.reduce((s, p) => s + (p.unclaimed_fees_usd ?? 0), 0);
 
     const reportLines = positionData.map((p) => {
       const act = actionMap.get(p.position);
-      const inRange = p.in_range ? "🟢 IN" : `🔴 OOR ${p.minutes_out_of_range ?? 0}m`;
+      const oorDir = !p.in_range && p.oor_direction ? ` (${p.oor_direction})` : "";
+      const inRange = p.in_range ? "🟢 IN" : `🔴 OOR${oorDir} ${p.minutes_out_of_range ?? 0}m`;
       const val = config.management.solMode ? `◎${p.total_value_usd ?? "?"}` : `$${p.total_value_usd ?? "?"}`;
       const unclaimed = config.management.solMode ? `◎${p.unclaimed_fees_usd ?? "?"}` : `$${p.unclaimed_fees_usd ?? "?"}`;
       const statusLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)" : act.action;
@@ -318,9 +387,11 @@ export async function runManagementCycle({ silent = false } = {}) {
 
       const actionBlocks = actionPositions.map((p) => {
         const act = actionMap.get(p.position);
+        const tracked = getTrackedPosition(p.position);
         return [
           `POSITION: ${p.pair} (${p.position})`,
           `  pool: ${p.pool}`,
+          tracked?.strategy ? `  strategy: ${tracked.strategy}` : null,
           `  action: ${act.action}${act.rule && act.rule !== "exit" ? ` — Rule ${act.rule}: ${act.reason}` : ""}${act.rule === "exit" ? ` — ⚡ Trailing TP: ${act.reason}` : ""}`,
           `  pnl_pct: ${p.pnl_pct}% | unclaimed_fees: ${cur}${p.unclaimed_fees_usd} | value: ${cur}${p.total_value_usd} | fee_per_tvl_24h: ${p.fee_per_tvl_24h ?? "?"}%`,
           `  bins: lower=${p.lower_bin} upper=${p.upper_bin} active=${p.active_bin} | oor_minutes: ${p.minutes_out_of_range ?? 0}`,
@@ -426,9 +497,20 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
     // Load active strategy
     const activeStrategy = getActiveStrategy();
-    const strategyBlock = activeStrategy
-      ? `ACTIVE STRATEGY: ${activeStrategy.name} — LP: ${activeStrategy.lp_strategy} | bins_above: ${activeStrategy.range?.bins_above ?? 0} (FIXED — never change) | deposit: ${activeStrategy.entry?.single_side === "sol" ? "SOL only (amount_y, amount_x=0)" : "dual-sided"} | best for: ${activeStrategy.best_for}`
-      : `No active strategy — use default bid_ask, bins_above: 0, SOL only.`;
+    if (!activeStrategy) {
+      screenReport = "⚠️ Screening skipped — no valid active strategy configured in user-config.json. Set \"strategy\" to a valid strategy ID from the library.";
+      log("screening", screenReport);
+      return screenReport;
+    }
+    const entrySig = activeStrategy.entry?.entry_signal;
+    const singleSide = activeStrategy.entry?.single_side ?? null;
+    const lpStrategy = activeStrategy.lp_strategy ?? null;
+    const strategyHint = `Strategy: ${activeStrategy.name} (lp_strategy=${lpStrategy}, single_side=${singleSide ?? "dual"})`;
+
+    // Compute bins instruction from strategy schema (generic — no per-strategy if blocks)
+    const binsInstruction = activeStrategy?.range?.type === "custom"
+      ? `**bins_below**: Use the strategy's range spec (${activeStrategy.range.notes}). bins_above=0. Do NOT use ta_bins.`
+      : `**bins_below**: use from the ta_bins line in the candidate block. If ta_bins.bins_below < ${config.strategy.binsBelow}, HARD SKIP that pool.`;
 
     // Fetch top candidates, then recon each sequentially with a small delay to avoid 429s
     const topCandidates = await getTopCandidates({ limit: 10 }).catch(() => null);
@@ -491,10 +573,32 @@ export async function runScreeningCycle({ silent = false } = {}) {
       return screenReport;
     }
 
-    // Pre-fetch active_bin for all passing candidates in parallel
-    const activeBinResults = await Promise.allSettled(
-      passing.map(({ pool }) => getActiveBin({ pool_address: pool.pool }))
-    );
+    // Pre-fetch active_bin, TA bin range, and (if strategy defines it) entry signal for all passing candidates in parallel
+    const [activeBinResults, taResults, entrySignalResults] = await Promise.all([
+      Promise.allSettled(passing.map(({ pool }) => getActiveBin({ pool_address: pool.pool }))),
+      Promise.allSettled(passing.map(async ({ pool }) => {
+        const taBins = await calculateBinsFromTA({
+          poolAddress: pool.pool,
+          binStep: pool.bin_step,
+          options: { timeframe: config.screening.timeframe || "5m", singleSidedSol: true },
+        });
+        return taBins;
+      })),
+      // Generic entry signal pre-fetch — only if activeStrategy defines entry_signal
+      (async () => {
+        const sig = activeStrategy?.entry?.entry_signal;
+        if (!sig) return null;
+        return Promise.allSettled(passing.map(async ({ pool }) => {
+          try {
+            if (sig.indicator === "supertrend") {
+              const candles = await fetchOHLCV({ poolAddress: pool.pool, timeframe: sig.timeframe });
+              return calculateSupertrend(candles);
+            }
+            return null;
+          } catch { return null; }
+        }));
+      })(),
+    ]);
 
     // Build compact candidate blocks
     const candidateBlocks = passing.map(({ pool, sw, n, ti, mem }, i) => {
@@ -505,6 +609,19 @@ export async function runScreeningCycle({ silent = false } = {}) {
       const priceChange = ti?.stats_1h?.price_change;
       const netBuyers = ti?.stats_1h?.net_buyers;
       const activeBin = activeBinResults[i]?.status === "fulfilled" ? activeBinResults[i].value?.binId : null;
+      const taBins = taResults[i]?.status === "fulfilled" ? taResults[i].value : null;
+
+      // Entry signal status (if strategy defines entry_signal)
+      const entrySignal = activeStrategy?.entry?.entry_signal && Array.isArray(entrySignalResults)
+        ? (() => {
+            const res = entrySignalResults[i]?.status === "fulfilled" ? entrySignalResults[i].value : null;
+            if (!res) return null;
+            const req = activeStrategy.entry.entry_signal.require;
+            const pass = (req.flipped == null || res.flipped === req.flipped) &&
+                         (req.direction == null || res.direction === req.direction);
+            return { pass, direction: res.direction, flipped: res.flipped };
+          })()
+        : null;
 
       // OKX signals
       const okxParts = [
@@ -535,6 +652,8 @@ export async function runScreeningCycle({ silent = false } = {}) {
         pool.price_vs_ath_pct != null ? `  ath: price_vs_ath=${pool.price_vs_ath_pct}%${pool.top_cluster_trend ? `, top_cluster=${pool.top_cluster_trend}` : ""}` : null,
         `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map(w => w.name).join(", ")})` : ""}`,
         activeBin != null ? `  active_bin: ${activeBin}` : null,
+        taBins ? `  ta_bins: bins_below=${taBins.bins_below} (min: ${config.strategy.binsBelow}), support=${taBins.support?.price || 'none'}, RSI=${taBins.rsi?.value?.toFixed(1) || '?'}, range=${taBins.price_range?.below_pct?.toFixed(1) || '?'}%↓/${taBins.price_range?.above_pct?.toFixed(1) || '?'}%↑` : null,
+        entrySignal != null ? `  entry_signal: direction=${entrySignal.direction}, flipped=${entrySignal.flipped}   ${entrySignal.pass ? "✅" : "❌"}` : null,
         priceChange != null ? `  1h: price${priceChange >= 0 ? "+" : ""}${priceChange}%, net_buyers=${netBuyers ?? "?"}` : null,
         n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
         mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
@@ -545,7 +664,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
     const { content } = await agentLoop(`
 SCREENING CYCLE
-${strategyBlock}
+${strategyHint}
 Positions: ${prePositions.total_positions}/${config.risk.maxPositions} | SOL: ${currentBalance.sol.toFixed(3)} | Deploy: ${deployAmount} SOL
 
 PRE-LOADED CANDIDATES (${passing.length} pools):
@@ -553,8 +672,10 @@ ${candidateBlocks.join("\n\n")}
 
 STEPS:
 1. Pick the best candidate based on narrative quality, smart wallets, and pool metrics.
+${entrySig ? `\nENTRY SIGNAL REQUIRED: only deploy pools where entry_signal shows ✅. Skip any pool showing ❌.\n` : ""}
 2. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
-   bins_below = round(35 + (volatility/5)*55) clamped to [35,90].
+   **strategy**: use EXACTLY ${lpStrategy ?? "bid_ask"}. Do NOT change it.
+   ${binsInstruction}
 3. Report in this exact format (no tables, no extra sections):
    🚀 DEPLOYED
 
@@ -563,10 +684,12 @@ STEPS:
 
    ◎ <deploy amount> SOL | <strategy> | bin <active_bin>
    Range: <minPrice> → <maxPrice>
+   Bin range: <minBinId> → <maxBinId>
+   TA bins: below <x>%, support <price or none>, RSI <x>, range <x>%↓/<x>%↑
    Downside buffer: <negative %>
 
    MARKET
-   Fee/TVL: <x>%
+   Fee/TVL: <x>%s
    Volume: $<x>
    TVL: $<x>
    Volatility: <x>
@@ -586,6 +709,7 @@ STEPS:
    <If OKX enrichment is missing, write exactly: OKX: unavailable>
 
    WHY THIS WON
+   <entry signal>
    <2-4 concise sentences on why this pool won, key risks, and why it still beat the alternatives>
 4. If no pool qualifies, report in this exact format instead:
    ⛔ NO DEPLOY
@@ -673,7 +797,8 @@ Summarize the current portfolio health, total fees earned, and performance of al
         if (!p.pnl_pct_suspicious && queuePeakConfirmation(p.position, p.pnl_pct)) {
           schedulePeakConfirmation(p.position);
         }
-        const exit = updatePnlAndCheckExits(p.position, p, config.management);
+        const tracked = getTrackedPosition(p.position);
+        const exit = updatePnlAndCheckExits(p.position, p, config.management, tracked?.strategy_snapshot || null);
         if (exit) {
           if (exit.action === "TRAILING_TP" && exit.needs_confirmation) {
             if (queueTrailingDropConfirmation(p.position, exit.peak_pnl_pct, exit.current_pnl_pct, config.management.trailingDropPct)) {
@@ -804,7 +929,8 @@ async function telegramHandler(msg) {
       const lines = positions.map((p, i) => {
         const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`;
         const age = p.age_minutes != null ? `${p.age_minutes}m` : "?";
-        const oor = !p.in_range ? " ⚠️OOR" : "";
+        const oorDir = p.oor_direction ? ` ${p.oor_direction}` : "";
+        const oor = !p.in_range ? ` ⚠️OOR${oorDir}` : "";
         return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
       });
       await sendMessage(`📊 Open Positions (${total_positions}):\n\n${lines.join("\n")}\n\n/close <n> to close | /set <n> <note> to set instruction`);
@@ -941,7 +1067,8 @@ if (isTTY) {
     if (positions.total_positions > 0) {
       console.log("Open positions:");
       for (const p of positions.positions) {
-        const status = p.in_range ? "in-range ✓" : "OUT OF RANGE ⚠";
+        const oorDir = p.oor_direction ? ` (${p.oor_direction})` : "";
+        const status = p.in_range ? "in-range ✓" : `OUT OF RANGE${oorDir} ⚠`;
         console.log(`  ${p.pair.padEnd(16)} ${status}  fees: $${p.unclaimed_fees_usd}`);
       }
       console.log();
@@ -968,11 +1095,16 @@ Commands:
   auto           Let the agent pick and deploy automatically
   /status        Refresh wallet + positions
   /candidates    Refresh top pool list
+  /screen        Run AI screening cycle manually
+  /manage        Run AI management cycle manually
   /briefing      Show morning briefing (last 24h)
   /learn         Study top LPers from the best current pool and save lessons
   /learn <addr>  Study top LPers from a specific pool address
   /thresholds    Show current screening thresholds + performance stats
   /evolve        Manually trigger threshold evolution from performance data
+  /reset --keyword <name>  Clear lessons + pool memory matching keyword
+  /reset --all   Wipe ALL lessons and ALL pool memory (nuclear)
+  /reset --pool <addr>     Clear pool memory for one pool
   /stop          Shut down
 `);
 
@@ -1032,7 +1164,8 @@ Commands:
         console.log(`\nWallet: ${wallet.sol} SOL  ($${wallet.sol_usd})`);
         console.log(`Positions: ${positions.total_positions}`);
         for (const p of positions.positions) {
-          const status = p.in_range ? "in-range ✓" : "OUT OF RANGE ⚠";
+          const oorDir = p.oor_direction ? ` (${p.oor_direction})` : "";
+          const status = p.in_range ? "in-range ✓" : `OUT OF RANGE${oorDir} ⚠`;
           console.log(`  ${p.pair.padEnd(16)} ${status}  fees: ${config.management.solMode ? "◎" : "$"}${p.unclaimed_fees_usd}`);
         }
         console.log();
@@ -1055,6 +1188,25 @@ Commands:
         console.log(`\nTop pools (${total_eligible} eligible from ${total_screened} screened):\n`);
         console.log(formatCandidates(candidates));
         console.log();
+      });
+      return;
+    }
+
+    if (input === "/manage") {
+      await runBusy(async () => {
+        console.log("\nStarting manual management cycle...\n");
+        const report = await runManagementCycle({ silent: false });
+        console.log(`\n${report || "Management cycle completed"}\n`);
+      });
+      return;
+    }
+
+    if (input === "/screen") {
+      await runBusy(async () => {
+        console.log("\nStarting manual screening cycle...\n");
+        const { runScreeningCycle } = await import("./index.js");
+        const report = await runScreeningCycle({ silent: false });
+        console.log(`\n${report || "Screening cycle completed"}\n`);
       });
       return;
     }
@@ -1155,6 +1307,45 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
           }
           console.log("\nSaved to user-config.json. Applied immediately.\n");
         }
+      });
+      return;
+    }
+
+    if (input.startsWith("/reset")) {
+      const { executeTool } = await import("./tools/executor.js");
+      const parts = input.split(" ");
+      const isAll = parts.includes("--all");
+      const kwIdx = parts.indexOf("--keyword");
+      const keyword = kwIdx >= 0 && parts[kwIdx + 1] ? parts[kwIdx + 1] : null;
+      const poolIdx = parts.indexOf("--pool");
+      const poolAddr = poolIdx >= 0 && parts[poolIdx + 1] ? parts[poolIdx + 1] : null;
+
+      if (!isAll && !keyword && !poolAddr) {
+        console.log("\nUsage:\n  /reset --keyword <name>  Clear lessons + pool memory by keyword\n  /reset --all           Wipe everything\n  /reset --pool <addr>   Clear one pool's memory\n");
+        rl.prompt();
+        return;
+      }
+
+      await runBusy(async () => {
+        console.log("\nResetting memory...\n");
+
+        if (isAll) {
+          const lRes = await executeTool("clear_lessons", { mode: "all" });
+          const pRes = await executeTool("clear_pool_memory", { mode: "all" });
+          console.log(`  Lessons cleared: ${lRes.cleared}`);
+          console.log(`  Pool entries cleared: ${pRes.cleared}`);
+        } else if (keyword) {
+          const lRes = await executeTool("clear_lessons", { mode: "keyword", keyword });
+          const pRes = await executeTool("clear_pool_memory", { mode: "keyword", keyword });
+          console.log(`  Lessons cleared: ${lRes.cleared}`);
+          console.log(`  Pools cleared: ${pRes.cleared}`);
+          if (pRes.pools) pRes.pools.forEach(p => console.log(`    - ${p.name}`));
+        } else if (poolAddr) {
+          const pRes = await executeTool("clear_pool_memory", { mode: "pool_address", pool_address: poolAddr });
+          console.log(`  Pool memory cleared: ${pRes.cleared ? pRes.name : "not found"}`);
+        }
+
+        console.log("\nDone.\n");
       });
       return;
     }

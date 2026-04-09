@@ -270,6 +270,7 @@ export function recordPositionSnapshot(poolAddress, snapshot) {
     pnl_pct: snapshot.pnl_pct ?? null,
     pnl_usd: snapshot.pnl_usd ?? null,
     in_range: snapshot.in_range ?? null,
+    oor_direction: snapshot.oor_direction ?? null,
     unclaimed_fees_usd: snapshot.unclaimed_fees_usd ?? null,
     minutes_out_of_range: snapshot.minutes_out_of_range ?? null,
     age_minutes: snapshot.age_minutes ?? null,
@@ -297,7 +298,7 @@ export function recallForPool(poolAddress) {
 
   // Deploy history summary
   if (entry.total_deploys > 0) {
-    lines.push(`POOL MEMORY [${entry.name}]: ${entry.total_deploys} past deploy(s), avg PnL ${entry.avg_pnl_pct}%, win rate ${entry.win_rate}%, last outcome: ${entry.last_outcome}`);
+    lines.push(`POOL MEMORY [${entry.name}]: ${entry.total_deploys} past deploy(s), avg PnL ${entry.avg_pnl_pct}%, win rate ${Math.round(entry.win_rate * 100)}%, last outcome: ${entry.last_outcome}`);
   }
 
   if (entry.cooldown_until && new Date(entry.cooldown_until) > new Date()) {
@@ -317,7 +318,9 @@ export function recallForPool(poolAddress) {
       ? (last.pnl_pct - first.pnl_pct).toFixed(2)
       : null;
     const oorCount = snaps.filter(s => s.in_range === false).length;
-    lines.push(`RECENT TREND: PnL drift ${pnlTrend !== null ? (pnlTrend >= 0 ? "+" : "") + pnlTrend + "%" : "unknown"} over last ${snaps.length} cycles, OOR in ${oorCount}/${snaps.length} cycles`);
+    const oorAbove = snaps.filter(s => s.oor_direction === "above").length;
+    const oorBelow = snaps.filter(s => s.oor_direction === "below").length;
+    lines.push(`RECENT TREND: PnL drift ${pnlTrend !== null ? (pnlTrend >= 0 ? "+" : "") + pnlTrend + "%" : "unknown"} over last ${snaps.length} cycles, OOR in ${oorCount}/${snaps.length} cycles (${oorAbove} above, ${oorBelow} below)`);
   }
 
   // Notes
@@ -363,4 +366,55 @@ export function addPoolNote({ pool_address, note }) {
   save(db);
   log("pool-memory", `Note added to ${pool_address.slice(0, 8)}: ${safeNote}`);
   return { saved: true, pool_address, note: safeNote };
+}
+
+/**
+ * Tool handler: clear_pool_memory
+ * Clears pool deploy history so the agent forgets past bad outcomes.
+ *
+ * Modes:
+ * - pool_address: wipe history for a specific pool
+ * - keyword: wipe all pools whose name contains the keyword (case-insensitive)
+ * - all: wipe entire pool memory database
+ */
+export function clearPoolMemory({ mode, pool_address, keyword } = {}) {
+  if (!mode) return { error: "mode required: 'pool_address', 'keyword', or 'all'" };
+
+  const db = load();
+
+  if (mode === "all") {
+    const count = Object.keys(db).length;
+    save({});
+    log("pool-memory", `Cleared all ${count} pool memory entries`);
+    return { cleared: count, mode: "all" };
+  }
+
+  if (mode === "pool_address") {
+    if (!pool_address) return { error: "pool_address required for mode=pool_address" };
+    if (!db[pool_address]) return { found: false, pool_address };
+    const name = db[pool_address].name;
+    delete db[pool_address];
+    save(db);
+    log("pool-memory", `Cleared memory for ${name} (${pool_address.slice(0, 8)})`);
+    return { cleared: 1, mode: "pool_address", name, pool_address };
+  }
+
+  if (mode === "keyword") {
+    if (!keyword) return { error: "keyword required for mode=keyword" };
+    const kw = keyword.toLowerCase();
+    const matched = Object.entries(db).filter(([, v]) =>
+      (v.name || "").toLowerCase().includes(kw)
+    );
+    for (const [addr] of matched) delete db[addr];
+    save(db);
+    log("pool-memory", `Cleared ${matched.length} pools matching "${keyword}"`);
+    return {
+      cleared: matched.length,
+      mode: "keyword",
+      keyword,
+      pools: matched.map(([addr, v]) => ({ name: v.name, address: addr.slice(0, 8) })),
+    };
+  }
+
+  return { error: "invalid mode" };
 }

@@ -115,7 +115,7 @@ export async function studyTopLPers({ pool_address, limit = 4 }) {
   const patterns = {
     top_lper_count: top.length,
     avg_hold_hours: avg(top.map((l) => l.avg_age_hour).filter(isNum)),
-    avg_win_rate: avg(top.map((l) => l.win_rate).filter(isNum)),
+    avg_win_rate: avg(top.map((l) => l.win_rate * 100).filter(isNum)),
     avg_roi_pct: avg(top.map((l) => l.roi * 100).filter(isNum)),
     avg_fee_pct_of_capital: avg(top.map((l) => l.fee_percent * 100).filter(isNum)),
     best_roi: (Math.max(...top.map((l) => l.roi)) * 100).toFixed(2) + "%",

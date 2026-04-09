@@ -167,10 +167,42 @@ Adds a manual lesson with outcome=manual, role=null (applies to all roles).
 Output: { saved: true, rule, outcome, role }
 \`\`\`
 
+### meridian lessons clear --keyword <text>
+Removes all lessons containing the keyword (case-insensitive).
+\`\`\`
+Example: meridian lessons clear --keyword BabyTrump
+Output: { cleared, mode, keyword }
+\`\`\`
+
+### meridian lessons clear --all
+Removes all lessons.
+\`\`\`
+Output: { cleared, mode }
+\`\`\`
+
 ### meridian pool-memory --pool <addr>
 Returns deploy history for a specific pool from pool-memory.json.
 \`\`\`
 Output: { pool_address, known, name, total_deploys, win_rate, avg_pnl_pct, last_outcome, notes, history }
+\`\`\`
+
+### meridian reset --all
+Wipes ALL lessons and ALL pool memory. Nuclear option.
+\`\`\`
+Output: { action, results: { lessons, pool_memory } }
+\`\`\`
+
+### meridian reset --keyword <name>
+Clears lessons and pool memory for pools matching the keyword.
+\`\`\`
+Example: meridian reset --keyword Downald
+Output: { action, results }
+\`\`\`
+
+### meridian reset --pool <addr>
+Clears pool memory for one specific pool only (lessons untouched).
+\`\`\`
+Output: { action, results }
 \`\`\`
 
 ### meridian evolve
@@ -249,6 +281,8 @@ const { values: flags } = parseArgs({
     "skip-swap":  { type: "boolean" },
     "dry-run":    { type: "boolean" },
     "silent":     { type: "boolean" },
+    "all":        { type: "boolean" },
+    keyword:      { type: "string" },
     limit:        { type: "string" },
   },
   allowPositionals: true,
@@ -538,6 +572,14 @@ switch (subcommand) {
       const { addLesson } = await import("./lessons.js");
       addLesson(text, [], { pinned: false, role: null });
       out({ saved: true, rule: text, outcome: "manual", role: null });
+    } else if (sub2 === "clear") {
+      const keyword = flags.keyword || argv.filter(a => !a.startsWith("-"))[2];
+      if (!keyword && !flags.all) die("Usage: meridian lessons clear --keyword <text>  OR  meridian lessons clear --all");
+      const { executeTool } = await import("./tools/executor.js");
+      out(await executeTool("clear_lessons", {
+        mode: flags.all ? "all" : "keyword",
+        keyword: keyword || undefined,
+      }));
     } else {
       const { listLessons } = await import("./lessons.js");
       const limit = flags.limit ? parseInt(flags.limit) : 50;
@@ -551,6 +593,35 @@ switch (subcommand) {
     if (!flags.pool) die("Usage: meridian pool-memory --pool <addr>");
     const { getPoolMemory } = await import("./pool-memory.js");
     out(getPoolMemory({ pool_address: flags.pool }));
+    break;
+  }
+
+  // ── reset ────────────────────────────────────────────────────────
+  case "reset": {
+    if (!flags.all && !flags.pool && !flags.keyword) {
+      out("Usage:\n  meridian reset --all                  (wipe everything)\n  meridian reset --pool <addr>         (one pool)\n  meridian reset --keyword <name>      (pools + lessons by keyword)");
+      break;
+    }
+    const { executeTool } = await import("./tools/executor.js");
+    const results = {};
+
+    // Always clear lessons by keyword or all
+    if (flags.all) {
+      results.lessons = await executeTool("clear_lessons", { mode: "all" });
+    } else if (flags.keyword) {
+      results.lessons = await executeTool("clear_lessons", { mode: "keyword", keyword: flags.keyword });
+    }
+
+    // Clear pool memory
+    if (flags.all) {
+      results.pool_memory = await executeTool("clear_pool_memory", { mode: "all" });
+    } else if (flags.keyword) {
+      results.pool_memory = await executeTool("clear_pool_memory", { mode: "keyword", keyword: flags.keyword });
+    } else if (flags.pool) {
+      results.pool_memory = await executeTool("clear_pool_memory", { mode: "pool_address", pool_address: flags.pool });
+    }
+
+    out({ action: "reset", results });
     break;
   }
 

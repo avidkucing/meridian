@@ -14,13 +14,15 @@ import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
 import { setPositionInstruction } from "../state.js";
 
-import { getPoolMemory, addPoolNote } from "../pool-memory.js";
-import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
+import { getPoolMemory, addPoolNote, clearPoolMemory } from "../pool-memory.js";
+import { addStrategy, listStrategies, getStrategy, getActiveStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
 import { addToBlacklist, removeFromBlacklist, listBlacklist } from "../token-blacklist.js";
 import { blockDev, unblockDev, listBlockedDevs } from "../dev-blocklist.js";
 import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool } from "../smart-wallets.js";
 import { getTokenInfo, getTokenHolders, getTokenNarrative } from "./token.js";
 import { config, reloadScreeningThresholds } from "../config.js";
+import { calculateBollingerBands, calculateRSI, calculateSupertrend, calculateMACD, analyzePool, formatAnalysis, fetchOHLCV } from "./technical-analysis.js";
+import { getPoolLiquidity, formatPoolLiquidity } from "./pool-liquidity.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -42,7 +44,23 @@ const toolMap = {
   get_pool_detail: getPoolDetail,
   get_position_pnl: getPositionPnl,
   get_active_bin: getActiveBin,
-  deploy_position: deployPosition,
+  get_pool_liquidity: async (args) => {
+    const data = await getPoolLiquidity({
+      pool_address: args.pool_address,
+      rangeBelow: args.range_below ?? 50,
+      rangeAbove: args.range_above ?? 50,
+    });
+    return {
+      ...data,
+      formatted: formatPoolLiquidity(data),
+    };
+  },
+  deploy_position: async (args) => {
+    return deployPosition({
+      ...args,
+      strategy_snapshot: getActiveStrategy() ?? null,
+    });
+  },
   get_my_positions: getMyPositions,
   get_wallet_positions: getWalletPositions,
   search_pools: searchPools,
@@ -93,12 +111,85 @@ const toolMap = {
   remove_strategy:     removeStrategy,
   get_pool_memory: getPoolMemory,
   add_pool_note: addPoolNote,
+  clear_pool_memory: clearPoolMemory,
   add_to_blacklist: addToBlacklist,
   remove_from_blacklist: removeFromBlacklist,
   list_blacklist: listBlacklist,
   block_deployer: blockDev,
   unblock_deployer: unblockDev,
   list_blocked_deployers: listBlockedDevs,
+  calculate_bollinger_bands: async ({ pool_address, timeframe = "5m", period = 20, std_dev_multiplier = 2 }) => {
+    const candles = await fetchOHLCV({ poolAddress: pool_address, timeframe });
+    const bb = calculateBollingerBands(candles, period, std_dev_multiplier);
+    return {
+      pool_address,
+      timeframe,
+      period,
+      std_dev_multiplier,
+      current_price: bb.currentPrice,
+      upper_band: bb.upperBand,
+      middle_band: bb.middleBand,
+      lower_band: bb.lowerBand,
+      percent_b: bb.percentB,
+      bandwidth: bb.bandwidth,
+      position: bb.position,
+      interpretation: bb.interpretation,
+    };
+  },
+  calculate_rsi: async ({ pool_address, timeframe = "5m", period = 14 }) => {
+    const candles = await fetchOHLCV({ poolAddress: pool_address, timeframe });
+    const rsi = calculateRSI(candles, period);
+    return {
+      pool_address,
+      timeframe,
+      period,
+      rsi: rsi.rsi,
+      status: rsi.overbought ? "OVERBOUGHT" : rsi.oversold ? "OVERSOLD" : "NEUTRAL",
+      interpretation: rsi.interpretation,
+    };
+  },
+  get_technical_analysis: async ({ pool_address, timeframe = "5m", supertrend_period = 10, supertrend_multiplier = 3 }) => {
+    const analysis = await analyzePool({ poolAddress: pool_address, timeframe, supertrendPeriod: supertrend_period, supertrendMultiplier: supertrend_multiplier });
+    return {
+      ...analysis,
+      formatted: formatAnalysis(analysis),
+    };
+  },
+  calculate_supertrend: async ({ pool_address, timeframe = "15m", period = 10, multiplier = 3 }) => {
+    const candles = await fetchOHLCV({ poolAddress: pool_address, timeframe });
+    const st = calculateSupertrend(candles, period, multiplier);
+    return {
+      pool_address,
+      timeframe,
+      period,
+      multiplier,
+      value: st.value,
+      direction: st.direction,
+      trend: st.trend,
+      price: st.price,
+      distance_pct: st.distancePct,
+      flipped: st.flipped,
+      interpretation: st.interpretation,
+    };
+  },
+  calculate_macd: async ({ pool_address, timeframe = "5m", fast_period = 12, slow_period = 26, signal_period = 9 }) => {
+    const candles = await fetchOHLCV({ poolAddress: pool_address, timeframe });
+    const macd = calculateMACD(candles, fast_period, slow_period, signal_period);
+    return {
+      pool_address,
+      timeframe,
+      fast_period,
+      slow_period,
+      signal_period,
+      macd_line: macd.macdLine,
+      signal_line: macd.signalLine,
+      histogram: macd.histogram,
+      crossover: macd.crossover,
+      trend: macd.trend,
+      diverging: macd.diverging,
+      interpretation: macd.interpretation,
+    };
+  },
   add_lesson: ({ rule, tags, pinned, role }) => {
     addLesson(rule, tags || [], { pinned: !!pinned, role: role || null });
     return { saved: true, rule, pinned: !!pinned, role: role || "all" };
@@ -301,7 +392,7 @@ export async function executeTool(name, args) {
       } else if (name === "deploy_position") {
         notifyDeploy({ pair: result.pool_name || args.pool_name || args.pool_address?.slice(0, 8), amountSol: args.amount_y ?? args.amount_sol ?? 0, position: result.position, tx: result.txs?.[0] ?? result.tx, priceRange: result.price_range, binStep: result.bin_step, baseFee: result.base_fee }).catch(() => {});
       } else if (name === "close_position") {
-        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0 }).catch(() => {});
+        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: args.reason }).catch((e) => log("executor_warn", `notifyClose failed: ${e.message}`));
         // Note low-yield closes in pool memory so screener avoids redeploying
         if (args.reason && args.reason.toLowerCase().includes("yield")) {
           const poolAddr = result.pool || args.pool_address;

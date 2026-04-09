@@ -68,6 +68,7 @@ export function trackPosition({
   organic_score,
   initial_value_usd,
   signal_snapshot = null,
+  strategy_snapshot = null,
 }) {
   const state = load();
   state.positions[position] = {
@@ -86,8 +87,10 @@ export function trackPosition({
     organic_score,
     initial_value_usd,
     signal_snapshot: signal_snapshot || null,
+    strategy_snapshot: strategy_snapshot || null,
     deployed_at: new Date().toISOString(),
     out_of_range_since: null,
+    oor_direction: null, // "above" or "below" — tracks which side of range price is on
     last_claim_at: null,
     total_fees_claimed_usd: 0,
     rebalance_count: 0,
@@ -112,15 +115,22 @@ export function trackPosition({
 
 /**
  * Mark a position as out of range (sets timestamp on first detection).
+ * @param {string} position_address
+ * @param {"above"|"below"} direction - which side of range price is on
  */
-export function markOutOfRange(position_address) {
+export function markOutOfRange(position_address, direction = null) {
   const state = load();
   const pos = state.positions[position_address];
   if (!pos) return;
   if (!pos.out_of_range_since) {
     pos.out_of_range_since = new Date().toISOString();
+    pos.oor_direction = direction;
     save(state);
-    log("state", `Position ${position_address} marked out of range`);
+    const dirLabel = direction ? ` (${direction})` : "";
+    log("state", `Position ${position_address} marked out of range${dirLabel}`);
+  } else if (pos.oor_direction !== direction && direction) {
+    pos.oor_direction = direction;
+    save(state);
   }
 }
 
@@ -133,6 +143,7 @@ export function markInRange(position_address) {
   if (!pos) return;
   if (pos.out_of_range_since) {
     pos.out_of_range_since = null;
+    pos.oor_direction = null;
     save(state);
     log("state", `Position ${position_address} back in range`);
   }
@@ -290,6 +301,54 @@ export function queueTrailingDropConfirmation(position_address, peakPnlPct, curr
   return true;
 }
 
+export function queueSlConfirmation(position_address, currentPnlPct) {
+  if (currentPnlPct == null) return false;
+
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return false;
+
+  // Already pending — only re-queue if PnL got worse
+  if (pos.pending_sl_started_at && currentPnlPct >= (pos.pending_sl_pnl_pct ?? Infinity)) return false;
+
+  pos.pending_sl_pnl_pct = currentPnlPct;
+  pos.pending_sl_started_at = new Date().toISOString();
+  save(state);
+  log("state", `Position ${position_address} SL candidate queued: PnL ${currentPnlPct.toFixed(2)}%`);
+  return true;
+}
+
+export function resolveSlConfirmation(position_address, freshPnlPct, stopLossPct) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed || pos.pending_sl_started_at == null) {
+    return { confirmed: false, pending: false };
+  }
+
+  const pendingPnl = pos.pending_sl_pnl_pct;
+  pos.pending_sl_pnl_pct = null;
+  pos.pending_sl_started_at = null;
+
+  if (freshPnlPct != null && freshPnlPct <= stopLossPct) {
+    const reason = `Stop loss: PnL ${freshPnlPct.toFixed(2)}% <= ${stopLossPct}% (confirmed after recheck)`;
+    pos.confirmed_sl_exit_reason = reason;
+    pos.confirmed_sl_exit_until = new Date(Date.now() + 30_000).toISOString();
+    save(state);
+    log("state", `Position ${position_address} SL confirmed after recheck: pending ${pendingPnl?.toFixed(2)}%, current ${freshPnlPct.toFixed(2)}%`);
+    return { confirmed: true, reason };
+  }
+
+  save(state);
+  log("state", `Position ${position_address} SL rejected after 15s recheck (pending: ${pendingPnl?.toFixed(2)}%, current: ${freshPnlPct ?? "?"}% — recovered)`);
+  return { confirmed: false, rejected: true };
+}
+
+export function hasPendingSlConfirmation(position_address) {
+  const state = load();
+  const pos = state.positions[position_address];
+  return !!(pos && !pos.closed && pos.pending_sl_started_at);
+}
+
 export function resolvePendingTrailingDrop(position_address, currentPnlPct, trailingDropPct, tolerancePct = 1.0) {
   const state = load();
   const pos = state.positions[position_address];
@@ -360,6 +419,7 @@ export function getStateSummary() {
       strategy: p.strategy,
       deployed_at: p.deployed_at,
       out_of_range_since: p.out_of_range_since,
+      oor_direction: p.oor_direction || null,
       minutes_out_of_range: minutesOutOfRange(p.position),
       total_fees_claimed_usd: p.total_fees_claimed_usd,
       initial_fee_tvl_24h: p.initial_fee_tvl_24h,
@@ -377,13 +437,26 @@ export function getStateSummary() {
  * @param {string} position_address
  * @param {object} positionData - fields from getMyPositions: pnl_pct, in_range, fee_per_tvl_24h
  * @param {object} mgmtConfig
+ * @param {object} strategySnapshot - optional strategy snapshot for exit-aware suppression
  * Returns { action, reason } or null if no exit needed.
  */
-export function updatePnlAndCheckExits(position_address, positionData, mgmtConfig) {
+export function updatePnlAndCheckExits(position_address, positionData, mgmtConfig, strategySnapshot = null) {
   const { pnl_pct: currentPnlPct, pnl_pct_suspicious, in_range, fee_per_tvl_24h } = positionData;
   const state = load();
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return null;
+
+  if (pos.confirmed_sl_exit_until) {
+    if (new Date(pos.confirmed_sl_exit_until).getTime() > Date.now() && pos.confirmed_sl_exit_reason) {
+      const reason = pos.confirmed_sl_exit_reason;
+      pos.confirmed_sl_exit_reason = null;
+      pos.confirmed_sl_exit_until = null;
+      save(state);
+      return { action: "STOP_LOSS", reason, confirmed_recheck: true };
+    }
+    pos.confirmed_sl_exit_reason = null;
+    pos.confirmed_sl_exit_until = null;
+  }
 
   if (pos.confirmed_trailing_exit_until) {
     if (new Date(pos.confirmed_trailing_exit_until).getTime() > Date.now() && pos.confirmed_trailing_exit_reason) {
@@ -421,10 +494,19 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
 
   // ── Stop loss ──────────────────────────────────────────────────
   if (!pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.stopLossPct != null && currentPnlPct <= mgmtConfig.stopLossPct) {
-    return {
-      action: "STOP_LOSS",
-      reason: `Stop loss: PnL ${currentPnlPct.toFixed(2)}% <= ${mgmtConfig.stopLossPct}%`,
-    };
+    if (!pos.pending_sl_started_at) {
+      // First breach — queue confirmation, do not close yet
+      return { action: "STOP_LOSS", needs_confirmation: true, current_pnl_pct: currentPnlPct };
+    }
+    // Timer has confirmed and set confirmed_sl_exit_* — handled above; this path is a fallback
+    return { action: "STOP_LOSS", reason: `Stop loss: PnL ${currentPnlPct.toFixed(2)}% <= ${mgmtConfig.stopLossPct}%` };
+  }
+  // Price recovered — clear any pending SL state
+  if (pos.pending_sl_started_at) {
+    pos.pending_sl_pnl_pct = null;
+    pos.pending_sl_started_at = null;
+    changed = true;
+    log("state", `Position ${position_address} SL pending cleared — price recovered (current: ${currentPnlPct?.toFixed(2)}%)`);
   }
 
   // ── Trailing TP ────────────────────────────────────────────────
@@ -446,26 +528,32 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   if (pos.out_of_range_since) {
     const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
     if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
+      const dir = pos.oor_direction ? ` (${pos.oor_direction})` : "";
       return {
         action: "OUT_OF_RANGE",
-        reason: `Out of range for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
+        reason: `Out of range${dir} for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
       };
     }
   }
 
   // ── Low yield (only after position has had time to accumulate fees) ───
-  const { age_minutes } = positionData;
-  const minAgeForYieldCheck = mgmtConfig.minAgeBeforeYieldCheck ?? 60;
-  if (
-    fee_per_tvl_24h != null &&
-    mgmtConfig.minFeePerTvl24h != null &&
-    fee_per_tvl_24h < mgmtConfig.minFeePerTvl24h &&
-    (age_minutes == null || age_minutes >= minAgeForYieldCheck)
-  ) {
-    return {
-      action: "LOW_YIELD",
-      reason: `Low yield: fee/TVL ${fee_per_tvl_24h.toFixed(2)}% < min ${mgmtConfig.minFeePerTvl24h}% (age: ${age_minutes ?? "?"}m)`,
-    };
+  // Suppressed if the strategy defines exit.conditions — those strategies manage their own exit logic
+  if (strategySnapshot?.exit?.conditions) {
+    // strategy handles its own exits — skip auto low yield check
+  } else {
+    const { age_minutes } = positionData;
+    const minAgeForYieldCheck = mgmtConfig.minAgeBeforeYieldCheck ?? 60;
+    if (
+      fee_per_tvl_24h != null &&
+      mgmtConfig.minFeePerTvl24h != null &&
+      fee_per_tvl_24h < mgmtConfig.minFeePerTvl24h &&
+      (age_minutes == null || age_minutes >= minAgeForYieldCheck)
+    ) {
+      return {
+        action: "LOW_YIELD",
+        reason: `Low yield: fee/TVL ${fee_per_tvl_24h.toFixed(2)}% < min ${mgmtConfig.minFeePerTvl24h}% (age: ${age_minutes ?? "?"}m)`,
+      };
+    }
   }
 
   return null;

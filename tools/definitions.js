@@ -123,6 +123,38 @@ Only call this if you need the current price to calculate a specific bin range (
   {
     type: "function",
     function: {
+      name: "get_pool_liquidity",
+      description: `Get the current liquidity distribution across all bins in a DLMM pool.
+Shows where OTHER LPs have placed their SOL — the real volume profile of the pool.
+Use this BEFORE deploying to identify empty bins (no competition) and crowded bins (high competition).
+
+Returns: active bin, bin step, current price, liquidity per bin (in SOL), total liquidity above/below active, max liquidity bin, empty bin count.
+
+Call this when you need to see the pool's liquidity landscape before choosing your bin range.`,
+      parameters: {
+        type: "object",
+        properties: {
+          pool_address: {
+            type: "string",
+            description: "The DLMM pool address"
+          },
+          range_below: {
+            type: "number",
+            description: "Number of bins below active to include (default: 50)"
+          },
+          range_above: {
+            type: "number",
+            description: "Number of bins above active to include (default: 50)"
+          }
+        },
+        required: ["pool_address"]
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
       name: "deploy_position",
       description: `Open a new DLMM liquidity position.
 
@@ -1069,6 +1101,222 @@ Blacklisted tokens are filtered BEFORE the LLM even sees pool candidates.`,
       parameters: {
         type: "object",
         properties: {}
+      }
+    }
+  },
+
+  // ═══════════════════════════════════════════
+  //  TECHNICAL ANALYSIS TOOLS
+  // ═══════════════════════════════════════════
+  {
+    type: "function",
+    function: {
+      name: "calculate_bollinger_bands",
+      description: `Calculate Bollinger Bands for a DLMM pool using on-chain OHLCV data from Meteora.
+Bollinger Bands consist of:
+- Upper Band: SMA + (2 × standard deviation)
+- Middle Band: Simple Moving Average (SMA)
+- Lower Band: SMA - (2 × standard deviation)
+
+Returns: upper/middle/lower band prices, %B (position within bands 0-100), bandwidth (volatility), position (ABOVE_UPPER, NEAR_UPPER, MIDDLE, NEAR_LOWER, BELOW_LOWER), and interpretation.
+
+Use this to:
+- Identify overbought/oversold conditions
+- Detect volatility squeezes (narrow bands = breakout imminent)
+- Confirm breakouts (price above upper band = bullish momentum)
+- Identify support/resistance zones
+
+IMPORTANT: Only call this with a real pool address from discover_pools, get_top_candidates, get_my_positions, or search_pools. Never guess a pool address.`,
+      parameters: {
+        type: "object",
+        properties: {
+          pool_address: {
+            type: "string",
+            description: "The DLMM pool address (base58 public key)"
+          },
+          timeframe: {
+            type: "string",
+            enum: ["5m", "15m", "30m", "1h", "2h", "4h", "12h", "24h"],
+            description: "Candle timeframe. Default 5m for short-term, 1h+ for longer-term analysis."
+          },
+          period: {
+            type: "number",
+            description: "SMA period. Default 20. Use 50 for longer-term trend."
+          },
+          std_dev_multiplier: {
+            type: "number",
+            description: "Standard deviation multiplier. Default 2. Use 1.5 for tighter bands, 2.5 for wider."
+          }
+        },
+        required: ["pool_address"]
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "calculate_rsi",
+      description: `Calculate the Relative Strength Index (RSI) for a DLMM pool using on-chain OHLCV data from Meteora.
+
+Returns: RSI value (0-100), status (OVERBOUGHT/NEUTRAL/OVERSOLD), and interpretation.
+
+Use this to:
+- Identify overbought conditions (RSI >= 70, price may reverse down)
+- Identify oversold conditions (RSI <= 30, price may bounce up)
+- Confirm momentum direction
+
+IMPORTANT: Only call this with a real pool address from discover_pools, get_top_candidates, get_my_positions, or search_pools. Never guess a pool address.`,
+      parameters: {
+        type: "object",
+        properties: {
+          pool_address: {
+            type: "string",
+            description: "The DLMM pool address (base58 public key)"
+          },
+          timeframe: {
+            type: "string",
+            enum: ["5m", "15m", "30m", "1h", "2h", "4h", "12h", "24h"],
+            description: "Candle timeframe. Default 5m."
+          },
+          period: {
+            type: "number",
+            description: "RSI period. Default 14."
+          }
+        },
+        required: ["pool_address"]
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "get_technical_analysis",
+      description: `Get a complete technical analysis for a DLMM pool combining RSI, Bollinger Bands, Supertrend, support/resistance levels, and volume analysis.
+
+Returns: current price, RSI, Bollinger Bands (upper/middle/lower, %B, bandwidth), Supertrend (value, direction, flip status), support levels (up to 3), resistance levels (up to 3), volume trend, and price change.
+
+This is the most comprehensive single tool — use it when the user asks for "full analysis" or when you need all indicators at once.
+
+IMPORTANT: Only call this with a real pool address from discover_pools, get_top_candidates, get_my_positions, or search_pools. Never guess a pool address.`,
+      parameters: {
+        type: "object",
+        properties: {
+          pool_address: {
+            type: "string",
+            description: "The DLMM pool address (base58 public key)"
+          },
+          timeframe: {
+            type: "string",
+            enum: ["5m", "15m", "30m", "1h", "2h", "4h", "12h", "24h"],
+            description: "Candle timeframe. Default 5m."
+          },
+          supertrend_period: {
+            type: "number",
+            description: "Supertrend ATR period. Default 10."
+          },
+          supertrend_multiplier: {
+            type: "number",
+            description: "Supertrend ATR multiplier. Default 3. Lower = more sensitive, higher = smoother."
+          }
+        },
+        required: ["pool_address"]
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "calculate_supertrend",
+      description: `Calculate the Supertrend indicator for a DLMM pool using on-chain OHLCV data from Meteora.
+
+Supertrend uses ATR (Average True Range) to create a trailing stop that flips between bullish and bearish:
+- BULLISH (green): price is above the Supertrend line — uptrend
+- BEARISH (red): price is below the Supertrend line — downtrend
+- FLIP: when direction changes — signals potential entry/exit
+
+Returns: Supertrend value, direction (BULLISH/BEARISH), trend (UPTREND/DOWNTREND), whether it just flipped, distance from price, and interpretation.
+
+Use this to:
+- Confirm trend direction before deploying (only LP in uptrend pools)
+- Detect trend reversals (flip = entry or exit signal)
+- Use as a trailing stop reference (Supertrend line = dynamic support/resistance)
+
+IMPORTANT: Only call this with a real pool address from discover_pools, get_top_candidates, get_my_positions, or search_pools. Never guess a pool address.`,
+      parameters: {
+        type: "object",
+        properties: {
+          pool_address: {
+            type: "string",
+            description: "The DLMM pool address (base58 public key)"
+          },
+          timeframe: {
+            type: "string",
+            enum: ["5m", "15m", "30m", "1h", "2h", "4h", "12h", "24h"],
+            description: "Candle timeframe. Default 15m for Supertrend."
+          },
+          period: {
+            type: "number",
+            description: "ATR period. Default 10."
+          },
+          multiplier: {
+            type: "number",
+            description: "ATR multiplier. Default 3. Use 2 for tighter signals, 4 for smoother."
+          }
+        },
+        required: ["pool_address"]
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "calculate_macd",
+      description: `Calculate the MACD (Moving Average Convergence Divergence) for a DLMM pool using on-chain OHLCV data from Meteora.
+
+MACD tracks momentum by measuring the distance between two EMAs:
+- MACD Line: EMA(12) - EMA(26)
+- Signal Line: EMA(MACD, 9)
+- Histogram: MACD Line - Signal Line
+- Crossover: when MACD crosses signal line (BULLISH or BEARISH)
+
+Returns: MACD line, signal line, histogram value, crossover status (BULLISH/BEARISH/NONE), trend direction, whether momentum is diverging or converging, and interpretation.
+
+Use this to:
+- Spot momentum shifts before price confirms
+- Confirm trend strength (diverging = strong trend, converging = weakening)
+- Time entries/exits on crossovers (bullish cross = buy signal, bearish cross = exit signal)
+
+IMPORTANT: Only call this with a real pool address from discover_pools, get_top_candidates, get_my_positions, or search_pools. Never guess a pool address.`,
+      parameters: {
+        type: "object",
+        properties: {
+          pool_address: {
+            type: "string",
+            description: "The DLMM pool address (base58 public key)"
+          },
+          timeframe: {
+            type: "string",
+            enum: ["5m", "15m", "30m", "1h", "2h", "4h", "12h", "24h"],
+            description: "Candle timeframe. Default 5m."
+          },
+          fast_period: {
+            type: "number",
+            description: "Fast EMA period. Default 12."
+          },
+          slow_period: {
+            type: "number",
+            description: "Slow EMA period. Default 26."
+          },
+          signal_period: {
+            type: "number",
+            description: "Signal line EMA period. Default 9."
+          }
+        },
+        required: ["pool_address"]
       }
     }
   },
