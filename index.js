@@ -183,9 +183,9 @@ export async function runManagementCycle({ silent = false } = {}) {
     positions = livePositions?.positions || [];
 
     if (positions.length === 0) {
-      log("cron", "No open positions — triggering screening cycle");
-      mgmtReport = "No open positions. Triggering screening cycle.";
-      runScreeningCycle().catch((e) => log("cron_error", `Triggered screening failed: ${e.message}`));
+      log("cron", "No open positions — skipping management cycle");
+      mgmtReport = "No open positions. Management cycle skipped.";
+      _managementBusy = false;
       return mgmtReport;
     }
 

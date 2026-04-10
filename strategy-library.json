@@ -129,7 +129,7 @@
       "id": "spot_in_a_pump",
       "name": "Spot in a Pump",
       "author": "Avid",
-      "lp_strategy": "spot",
+      "lp_strategy": "bid_ask",
       "token_criteria": {
         "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
       },
