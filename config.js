@@ -60,6 +60,7 @@ export const config = {
     stopLossPct:           u.stopLossPct           ?? u.emergencyPriceDropPct ?? -50,
     takeProfitFeePct:      u.takeProfitFeePct      ?? 5,
     minFeePerTvl24h:       u.minFeePerTvl24h       ?? 7,
+    maxPreEntryChangePct:  u.maxPreEntryChangePct  ?? 15,
     minAgeBeforeYieldCheck: u.minAgeBeforeYieldCheck ?? 60, // minutes before low yield can trigger close
     minSolToOpen:          u.minSolToOpen          ?? 0.55,
     deployAmountSol:       u.deployAmountSol       ?? 0.5,

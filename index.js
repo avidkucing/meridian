@@ -165,6 +165,87 @@ function stopCronJobs() {
   _cronTasks = [];
 }
 
+// ═══════════════════════════════════════════
+//  CRASH DETECTION
+// ═══════════════════════════════════════════
+
+/**
+ * Check if a position is experiencing a high-volume crash with no recovery.
+ * Returns exit reason if detected, null otherwise.
+ *
+ * Logic:
+ * 1. Fetch recent 5m candles
+ * 2. Find largest single-candle drop
+ * 3. If drop > 10% AND volume > 3x average → crash candidate
+ * 4. Check if next 1-2 candles recovered > 50% of crash range
+ * 5. If no recovery → high probability of continuation → exit
+ */
+async function checkCrashExit(positionData, pnlSuspect) {
+  if (pnlSuspect) return null; // skip if PnL data is suspect
+  if ((positionData.age_minutes ?? 0) < 15) return null; // need some history
+
+  try {
+    const candles = await fetchOHLCV({ poolAddress: positionData.pool, timeframe: "5m" });
+    if (candles.length < 6) return null; // need at least a few candles
+
+    // Find largest single-candle drop
+    let maxDropIdx = -1;
+    let maxDropPct = 0;
+    for (let i = 1; i < candles.length; i++) {
+      const drop = (candles[i].close - candles[i - 1].close) / candles[i - 1].close * 100;
+      if (drop < maxDropPct) {
+        maxDropPct = drop;
+        maxDropIdx = i;
+      }
+    }
+
+    // Need at least -10% drop to qualify
+    if (maxDropPct > -10) return null;
+
+    // Check volume: crash candle must be > 3x average
+    const avgVol = candles.reduce((s, c) => s + c.volume, 0) / candles.length;
+    const crashVol = candles[maxDropIdx].volume;
+    if (crashVol < avgVol * 3) return null;
+
+    // Check recovery: did the next 1-2 candles reclaim > 50% of the crash range?
+    const crashOpen = candles[maxDropIdx - 1].close;
+    const crashClose = candles[maxDropIdx].close;
+    const crashRange = crashOpen - crashClose;
+    const recoveryCandles = candles.slice(maxDropIdx + 1, maxDropIdx + 3);
+
+    if (recoveryCandles.length > 0) {
+      const maxRecovery = Math.max(...recoveryCandles.map(c => c.close));
+      const recovered = maxRecovery - crashClose;
+      const recoveryPct = recovered / crashRange;
+
+      if (recoveryPct > 0.5) {
+        // Good recovery — likely just a wick, not a crash continuation
+        return null;
+      }
+
+      // Low recovery + high volume crash = continuation likely
+      return {
+        reason: `Crash: -${Math.abs(maxDropPct).toFixed(1)}% candle with ${((crashVol / avgVol - 1) * 100).toFixed(0)}% vol spike, only ${(recoveryPct * 100).toFixed(0)}% recovery — continuation likely`,
+      };
+    }
+
+    // Crash was the most recent candle — no recovery data yet, but it's severe
+    if (maxDropIdx === candles.length - 1 && maxDropPct < -15) {
+      return {
+        reason: `Severe crash: -${Math.abs(maxDropPct).toFixed(1)}% candle with ${((crashVol / avgVol - 1) * 100).toFixed(0)}% vol spike — emergency exit`,
+      };
+    }
+
+    return null;
+  } catch {
+    return null; // don't fail management on fetch errors
+  }
+}
+
+// ═══════════════════════════════════════════
+//  MANAGEMENT CYCLE
+// ═══════════════════════════════════════════
+
 export async function runManagementCycle({ silent = false } = {}) {
   if (_managementBusy) return null;
   _managementBusy = true;
@@ -262,6 +343,14 @@ export async function runManagementCycle({ silent = false } = {}) {
       if (!pnlSuspect && p.pnl_pct != null && p.pnl_pct <= config.management.stopLossPct) {
         actionMap.set(p.position, { action: "CLOSE", rule: 1, reason: "stop loss" });
         continue;
+      }
+      // Rule 1b: crash detection — high-volume single-candle dump with no recovery
+      if (!actionMap.has(p.position)) {
+        const crashCheck = await checkCrashExit(p, pnlSuspect).catch(() => null);
+        if (crashCheck) {
+          actionMap.set(p.position, { action: "CLOSE", rule: "1b", reason: crashCheck.reason });
+          continue;
+        }
       }
       // Rule 2: take profit
       if (!pnlSuspect && p.pnl_pct != null && p.pnl_pct >= config.management.takeProfitFeePct) {
@@ -510,7 +599,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
     // Compute bins instruction from strategy schema (generic — no per-strategy if blocks)
     const binsInstruction = activeStrategy?.range?.type === "custom"
       ? `**bins_below**: Use the strategy's range spec (${activeStrategy.range.notes}). bins_above=0. Do NOT use ta_bins.`
-      : `**bins_below**: use from the ta_bins line in the candidate block. If ta_bins.bins_below < ${config.strategy.binsBelow}, HARD SKIP that pool.`;
+      : `**bins_below**: use from the ta_bins line in the candidate block (already pre-filtered in code to >= ${config.strategy.binsBelow}).`;
 
     // Fetch top candidates, then recon each sequentially with a small delay to avoid 429s
     const topCandidates = await getTopCandidates({ limit: 10 }).catch(() => null);
@@ -559,6 +648,62 @@ export async function runScreeningCycle({ silent = false } = {}) {
       return true;
     });
 
+    // ── Hard-gate: entry signal + extended-move check BEFORE expensive enrichment ──
+    if (activeStrategy?.entry?.entry_signal) {
+      const sig = activeStrategy.entry.entry_signal;
+      const maxPreEntry = config.management.maxPreEntryChangePct;
+      const tfSeconds = { "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "24h": 86400 };
+      const candleSec = tfSeconds[sig.timeframe] || 1800;
+
+      const kept = [];
+      for (const candidate of passing) {
+        try {
+          // Fetch with explicit time range to guarantee enough candles (~50)
+          // The API returns only ~10 candles without time bounds — not enough for Supertrend (needs ≥11)
+          const endTime = Math.floor(Date.now() / 1000);
+          const startTime = endTime - (candleSec * 50);
+          const candles = await fetchOHLCV({ poolAddress: candidate.pool.pool, timeframe: sig.timeframe, startTime, endTime });
+
+          // Check signal: latest flip direction must match the strategy's required direction
+          if (sig.indicator === "supertrend" && candles.length >= 11) {
+            const st = calculateSupertrend(candles);
+            const reqDir = sig.require?.direction;
+            const signalPass = reqDir == null || st.lastFlipDirection === reqDir;
+            if (!signalPass) {
+              log("screening", `  ❌ ${candidate.pool.name}: entry_signal ${sig.indicator}: lastFlip=${st.lastFlipDirection ?? "none"} (need ${reqDir})`);
+              filteredOut.push({ name: candidate.pool.name, reason: `entry_signal failed: lastFlip=${st.lastFlipDirection ?? "none"}, need=${reqDir}` });
+              continue;
+            }
+          }
+
+          // Check extended move
+          if (candles.length >= 5) {
+            const firstOpen = candles[0].open;
+            const lastClose = candles[candles.length - 1].close;
+            const changePct = Math.abs((lastClose - firstOpen) / firstOpen * 100);
+            if (changePct > maxPreEntry) {
+              log("screening", `  ⏭️ ${candidate.pool.name}: pre-entry price moved ${changePct.toFixed(1)}% in ${sig.timeframe} (max ${maxPreEntry}%)`);
+              filteredOut.push({ name: candidate.pool.name, reason: `extended move: ${changePct.toFixed(1)}% in ${sig.timeframe} window` });
+              continue;
+            }
+          }
+
+          kept.push(candidate);
+        } catch (e) {
+          log("screening", `  ⚠️ ${candidate.pool.name}: entry signal fetch failed — ${e.message}`);
+          filteredOut.push({ name: candidate.pool.name, reason: `entry signal fetch failed` });
+          // Let it through if fetch fails (don't over-filter on network errors)
+          kept.push(candidate);
+        }
+      }
+
+      if (kept.length < passing.length) {
+        log("screening", `Entry signal filter: ${kept.length}/${passing.length} pools passed`);
+      }
+      passing.length = 0;
+      passing.push(...kept);
+    }
+
     if (passing.length === 0) {
       const examples = filteredOut.slice(0, 3)
         .map((entry) => `- ${entry.name}: ${entry.reason}`)
@@ -600,8 +745,29 @@ export async function runScreeningCycle({ silent = false } = {}) {
       })(),
     ]);
 
-    // Build compact candidate blocks
-    const candidateBlocks = passing.map(({ pool, sw, n, ti, mem }, i) => {
+    // ── Hard-gate: TA bins below minimum after enrichment (computed once above) ──
+    const minBinsBelow = config.strategy.binsBelow;
+    const taFiltered = [];
+    const filteredIdx = new Set();
+    for (let i = 0; i < passing.length; i++) {
+      const taBins = taResults[i]?.status === "fulfilled" ? taResults[i].value : null;
+      if (taBins && taBins.bins_below != null && taBins.bins_below < minBinsBelow) {
+        log("screening", `  ❌ ${passing[i].pool.name}: TA bins_below=${taBins.bins_below} < ${minBinsBelow}`);
+        taFiltered.push({ name: passing[i].pool.name, reason: `TA bins_below ${taBins.bins_below} < ${minBinsBelow}` });
+        filteredIdx.add(i);
+      }
+    }
+    if (taFiltered.length > 0) {
+      log("screening", `TA bins filter: ${passing.length - filteredIdx.size}/${passing.length} pools passed (min bins_below: ${minBinsBelow})`);
+      filteredOut.push(...taFiltered);
+    }
+
+    // Build compact candidate blocks (excluding TA-filtered pools)
+    const candidateBlocks = [];
+    const validPools = [];
+    for (let i = 0; i < passing.length; i++) {
+      if (filteredIdx.has(i)) continue;
+      const { pool, sw, n, ti, mem } = passing[i];
       const botPct = ti?.audit?.bot_holders_pct ?? "?";
       const top10Pct = ti?.audit?.top_holders_pct ?? "?";
       const feesSol = ti?.global_fees_sol ?? "?";
@@ -659,15 +825,27 @@ export async function runScreeningCycle({ silent = false } = {}) {
         mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
       ].filter(Boolean).join("\n");
 
-      return block;
-    });
+      candidateBlocks.push(block);
+      validPools.push(pool);
+    }
+
+    // If all pools filtered out, skip the agent
+    if (candidateBlocks.length === 0) {
+      const combinedExamples = filteredOut.slice(0, 3)
+        .map((entry) => `- ${entry.name}: ${entry.reason}`)
+        .join("\n");
+      screenReport = combinedExamples
+        ? `No candidates available.\nFiltered examples:\n${combinedExamples}`
+        : `No candidates available (all filtered by entry rules).`;
+      return screenReport;
+    }
 
     const { content } = await agentLoop(`
 SCREENING CYCLE
 ${strategyHint}
 Positions: ${prePositions.total_positions}/${config.risk.maxPositions} | SOL: ${currentBalance.sol.toFixed(3)} | Deploy: ${deployAmount} SOL
 
-PRE-LOADED CANDIDATES (${passing.length} pools):
+PRE-LOADED CANDIDATES (${candidateBlocks.length} pools):
 ${candidateBlocks.join("\n\n")}
 
 STEPS:
@@ -727,6 +905,7 @@ ${entrySig ? `\nENTRY SIGNAL REQUIRED: only deploy pools where entry_signal show
 IMPORTANT:
 - Never write "unknown" for OKX. Use real values, omit missing fields, or write exactly "OKX: unavailable".
 - Keep the whole report compact and highly scannable for Telegram.
+- All screening data (pool memory, token info, token holders, active bin) is PRE-LOADED in the candidate blocks above. Do NOT call get_pool_memory, get_token_info, get_token_holders, or get_active_bin — this data is already provided.
       `, config.llm.maxSteps, [], "SCREENER", config.llm.screeningModel, 2048, {
         onToolStart: async ({ name }) => { await liveMessage?.toolStart(name); },
         onToolFinish: async ({ name, result, success }) => { await liveMessage?.toolFinish(name, result, success); },

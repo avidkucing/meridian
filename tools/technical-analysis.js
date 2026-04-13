@@ -690,18 +690,31 @@ export function calculateSupertrend(candles, period = 10, multiplier = 3) {
 
   const history = [];
 
-  // Calculate ATR
-  function calcATR(candles, period, upToIndex) {
-    let sum = 0;
-    const start = Math.max(1, upToIndex - period + 1);
-    for (let i = start; i <= upToIndex; i++) {
-      const high = candles[i].high;
-      const low = candles[i].low;
-      const prevClose = candles[i - 1].close;
-      const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
-      sum += tr;
+  // Calculate ATR using RMA (Wilder's smoothing) — the standard Supertrend formula
+  // RMA: ATR = (prevATR × (n-1) + TR) / n
+  const _trValues = [];
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1].close;
+    _trValues.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+
+  function calcATR(idx) {
+    const n = idx; // number of TR values available (candles indexed 1..idx)
+    if (n < 1) return 0;
+    const seedCount = Math.min(period, n);
+    let atr = 0;
+    for (let j = 0; j < seedCount; j++) atr += _trValues[j];
+    atr /= seedCount;
+    // RMA smoothing for remaining values
+    if (n > period) {
+      const k = 1 / period;
+      for (let j = period; j < n; j++) {
+        atr = _trValues[j] * k + atr * (1 - k);
+      }
     }
-    return sum / Math.min(period, upToIndex);
+    return atr;
   }
 
   // Supertrend tracking variables
@@ -709,7 +722,7 @@ export function calculateSupertrend(candles, period = 10, multiplier = 3) {
   let direction = []; // 1 = bullish (price above), -1 = bearish (price below)
 
   for (let i = 1; i < candles.length; i++) {
-    const atr = calcATR(candles, period, i);
+    const atr = calcATR(i);
     const hl2 = (candles[i].high + candles[i].low) / 2;
     const upperBand = hl2 + (multiplier * atr);
     const lowerBand = hl2 - (multiplier * atr);
@@ -721,18 +734,9 @@ export function calculateSupertrend(candles, period = 10, multiplier = 3) {
       const prev = supertrend[i - 1];
       const prevDir = direction[i - 1];
 
-      // Update upper/lower bands based on direction
-      let finalUpper, finalLower;
-      if (upperBand < prev.upper || prevDir === -1) {
-        finalUpper = upperBand;
-      } else {
-        finalUpper = prev.upper;
-      }
-      if (lowerBand > prev.lower || prevDir === 1) {
-        finalLower = lowerBand;
-      } else {
-        finalLower = prev.lower;
-      }
+      // CORRECT: unconditional min/max on bands (Pine Script standard)
+      const finalUpper = Math.min(upperBand, prev.upper);
+      const finalLower = Math.max(lowerBand, prev.lower);
 
       // Determine direction
       let newDir;
@@ -765,8 +769,17 @@ export function calculateSupertrend(candles, period = 10, multiplier = 3) {
   const latest = history[history.length - 1];
   const prev = history.length > 1 ? history[history.length - 2] : null;
 
-  // Detect flip
+  // Detect flip (last candle vs previous)
   const flipped = prev && latest.direction !== prev.direction;
+
+  // Find the most recent flip direction (scan history backwards)
+  let lastFlipDirection = null;
+  for (let i = history.length - 1; i > 0; i--) {
+    if (history[i].direction !== history[i - 1].direction) {
+      lastFlipDirection = history[i].direction;
+      break;
+    }
+  }
 
   return {
     value: latest.value,
@@ -775,6 +788,7 @@ export function calculateSupertrend(candles, period = 10, multiplier = 3) {
     price: latest.price,
     distancePct: latest.distancePct,
     flipped,
+    lastFlipDirection,
     interpretation: getSupertrendInterpretation(latest.direction, latest.distancePct, flipped),
     history,
   };

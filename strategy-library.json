@@ -129,7 +129,7 @@
       "id": "spot_in_a_pump",
       "name": "Spot in a Pump",
       "author": "Avid",
-      "lp_strategy": "bid_ask",
+      "lp_strategy": "spot",
       "token_criteria": {
         "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
       },
@@ -137,11 +137,11 @@
         "condition": "Token near perceived top after large pump.",
         "entry_signal": {
           "indicator": "supertrend",
-          "timeframe": "30m",
+          "timeframe": "5m",
           "require": { "flipped": true, "direction": "BULLISH" }
         },
         "single_side": "SOL",
-        "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        "notes": "5m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=5m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
       },
       "range": {
         "type": "default",
@@ -172,18 +172,18 @@
         "condition": "Token near perceived top after large pump.",
         "entry_signal": {
           "indicator": "supertrend",
-          "timeframe": "30m",
+          "timeframe": "5m",
           "require": { "flipped": true, "direction": "BULLISH" }
         },
         "single_side": "SOL",
-        "notes": "30m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=30m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        "notes": "5m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=5m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
       },
       "range": {
         "type": "custom",
         "notes": "Wide range: -86% to -94% below current price, ~240+ bins.All bins_below, bins_above=0."
       },
       "exit": {
-        "timeframe": "30m",
+        "timeframe": "5m",
         "min_confluence": 2,
         "conditions": [
           { "indicator": "rsi", "period": 2, "op": "gt", "value": 90 },

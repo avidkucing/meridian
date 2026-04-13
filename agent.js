@@ -5,7 +5,7 @@ import { executeTool } from "./tools/executor.js";
 import { tools } from "./tools/definitions.js";
 
 const MANAGER_TOOLS  = new Set(["close_position", "claim_fees", "swap_token", "get_position_pnl", "get_my_positions", "get_wallet_balance"]);
-const SCREENER_TOOLS = new Set(["deploy_position", "get_active_bin", "get_pool_liquidity", "get_top_candidates", "check_smart_wallets_on_pool", "get_token_holders", "get_token_narrative", "get_token_info", "search_pools", "get_pool_memory", "get_wallet_balance", "get_my_positions"]);
+const SCREENER_TOOLS = new Set(["deploy_position", "get_active_bin", "get_top_candidates", "check_smart_wallets_on_pool", "get_token_holders", "get_token_narrative", "get_token_info", "search_pools", "get_pool_memory", "get_wallet_balance", "get_my_positions"]);
 const GENERAL_INTENT_ONLY_TOOLS = new Set([
   "self_update",
   "update_config",
@@ -260,6 +260,63 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
           log("agent", "Empty response, retrying...");
           continue;
         }
+
+        // Check if the model is trying to call a tool via text (malformed invocation)
+        // Handles patterns like: <invoke name="get_pool_memory">...</invoke>
+        // or: {"tool_call": "get_pool_memory", "args": {...}}
+        const TOOL_INVOK_RE = /<(?:invoke|tool|call)\s+name=["'](\w+)["'][^>]*>([\s\S]*?)<\/(?:invoke|tool|call)>/gi;
+        const TOOL_INVOK_ALT_RE = /(?:call|invoke|use)\s+["']?(\w+)["']?\s*(?:with|using|:)\s*({[\s\S]*?})/gi;
+        const TOOL_MATCH = TOOL_INVOK_RE.exec(msg.content) || TOOL_INVOK_ALT_RE.exec(msg.content);
+
+        if (TOOL_MATCH && !sawToolCall) {
+          const functionName = TOOL_MATCH[1];
+          let argsStr = TOOL_MATCH[2]?.trim();
+          // Clean up XML-style attributes if present
+          if (argsStr && argsStr.includes('=')) {
+            // Parse XML-style attributes: pool_address="abc"
+            const attrMatch = argsStr.match(/(\w+)=["']([^"']+)["']/);
+            if (attrMatch) {
+              argsStr = JSON.stringify({ [attrMatch[1]]: attrMatch[2] });
+            } else {
+              argsStr = "{}";
+            }
+          }
+
+          log("agent", `Detected malformed tool call in content: ${functionName} — executing directly`);
+
+          let functionArgs;
+          try {
+            functionArgs = JSON.parse(argsStr || "{}");
+          } catch {
+            try {
+              functionArgs = JSON.parse(jsonrepair(argsStr || "{}"));
+            } catch {
+              functionArgs = {};
+              log("error", `Could not parse args for malformed tool call: ${functionName}`);
+            }
+          }
+
+          await onToolStart?.({ name: functionName, args: functionArgs, step });
+          const result = await executeTool(functionName, functionArgs);
+          await onToolFinish?.({
+            name: functionName,
+            args: functionArgs,
+            result,
+            success: result?.success !== false && !result?.error && !result?.blocked,
+            step,
+          });
+          sawToolCall = true;
+
+          // Replace the fake tool call in the message with a system note, then continue the loop
+          const cleanedContent = msg.content.replace(TOOL_INVOK_RE, "[Tool executed — see result below]").replace(TOOL_INVOK_ALT_RE, "[Tool executed — see result below]");
+          messages[messages.length - 1] = { role: "assistant", content: cleanedContent };
+          messages.push({
+            role: "tool",
+            content: JSON.stringify(result),
+          });
+          continue;
+        }
+
         if (mustUseRealTool && !sawToolCall) {
           noToolRetryCount += 1;
           messages.pop();
