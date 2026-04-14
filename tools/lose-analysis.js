@@ -245,6 +245,30 @@ function buildPositionDiagnosis(candles, deployEntry, poolMemoryItem) {
   const declineCandles = candles.length - peakIdx;
   parts.push(`Decline phase: ${declineCandles} candles (${declineCandles * 5} minutes) of downtrend after peak.`);
 
+  // Slow bleed analysis
+  let downCandles = 0;
+  let upCandles = 0;
+  for (let i = 1; i < candles.length; i++) {
+    const change = ((candles[i].close - candles[i - 1].close) / candles[i - 1].close * 100);
+    if (change < 0) downCandles++; else upCandles++;
+  }
+  const downRatio = (downCandles / (candles.length - 1) * 100).toFixed(0);
+  if (downRatio >= 60 && maxDropPct > -10) {
+    parts.push(`🩸 SLOW BLEED: ${downRatio}% of candles declined with no single crash — ${downCandles} down vs ${upCandles} up.`);
+  }
+
+  const reason = (deployEntry.close_reason || "").toLowerCase();
+  if (reason.includes("out of range")) {
+    const dir = reason.includes("below") ? "below range (price dropped)" : reason.includes("above") ? "above range (price pumped)" : "unknown direction";
+    parts.push(`🚪 OOR EXIT: Position closed because price went ${dir} — trailing TP was active but OOR timer forced the exit.`);
+  }
+  const isGenuineTrailing = reason.includes("peak") && reason.includes("dropped");
+  if (isGenuineTrailing && deployEntry.pnl_pct < 0) {
+    parts.push(`🔒 TRAILING TP LOCKED LOSS: Trailing stop triggered and exited at ${deployEntry.pnl_pct}% loss — position never recovered to breakeven.`);
+  } else if ((reason.includes("trailing tp") || reason.includes("trailing")) && !reason.includes("out of range") && deployEntry.pnl_pct < 0) {
+    parts.push(`🔒 TRAILING TP EXIT (vague reason): Close reason says "${deployEntry.close_reason}" but lacks peak/dropped details — LLM may have labeled this. Actual exit cause could be different.`);
+  }
+
   // Compare to pool-memory snapshots
   const snapshots = poolMemoryItem.snapshots || [];
   const posStart = deployEntry.closed_at ? new Date(deployEntry.closed_at).getTime() : null;
@@ -272,7 +296,7 @@ function buildPrevention(entryCandles, entrySupertrend, positionCandles, deployE
     });
   }
 
-  // Late entry / extended move
+  // Late entry / extended move — check both net change AND candle range
   if (entryCandles.length >= 3) {
     const first = entryCandles[0];
     const last = entryCandles[entryCandles.length - 1];
@@ -285,6 +309,21 @@ function buildPrevention(entryCandles, entrySupertrend, positionCandles, deployE
         severity: "HIGH",
         issue: `Price already moved +${runPct.toFixed(1)}% across entry window — late entry into mature pump`,
         fix: `Max pre-entry price-change is ${maxAllowed}%. Skip if price moved beyond that in the lookback window. Wait for a pullback + re-flip instead of chasing.`,
+      });
+    }
+
+    // Extended range detection — high-to-low range matters even if net change is small
+    const highestHigh = Math.max(...entryCandles.map(c => c.high));
+    const lowestLow = Math.min(...entryCandles.map(c => c.low));
+    const rangePct = ((highestHigh - lowestLow) / lowestLow * 100);
+    const maxRangeAllowed = userConfig?.maxPreEntryRangePct ?? 20;
+
+    if (rangePct > maxRangeAllowed && runPct <= maxAllowed) {
+      recommendations.push({
+        category: "ENTRY_TIMING",
+        severity: "HIGH",
+        issue: `Price range was ${rangePct.toFixed(1)}% (high ${highestHigh} → low ${lowestLow}) but net change only ${runPct.toFixed(1)}% — extended range means entry was late; price already did its move and is just ranging`,
+        fix: `Max pre-entry candle-range is ${maxRangeAllowed}%. When range is high but net change is low, the pump already happened — wait for a clean breakout + re-flip instead of entering at the top of a stalled move.`,
       });
     }
   }
@@ -332,15 +371,61 @@ function buildPrevention(entryCandles, entrySupertrend, positionCandles, deployE
         fix: "Add real-time crash detection: if 5m candle drops >10%, immediately evaluate close. Current trailing TP only checks PnL % but doesn't react to speed of decline.",
       });
     }
+
+    // Slow bleed detection — sustained downtrend without a single dramatic crash
+    // Criteria: no single candle drops >10%, but position still loses >5%
+    if (maxDrop > -10 && deployEntry.pnl_pct < -5) {
+      // Count candles going down more than up
+      let downCandles = 0;
+      let upCandles = 0;
+      let cumulativeDown = 0;
+      for (let i = 1; i < positionCandles.length; i++) {
+        const change = ((positionCandles[i].close - positionCandles[i - 1].close) / positionCandles[i - 1].close * 100);
+        if (change < 0) { downCandles++; cumulativeDown += change; }
+        else { upCandles++; }
+      }
+      const downRatio = downCandles / (positionCandles.length - 1);
+      if (downRatio >= 0.6) {
+        recommendations.push({
+          category: "SLOW_BLEED",
+          severity: "HIGH",
+          issue: `Slow bleed: ${Math.round(downRatio * 100)}% of candles declined, no single crash candle but position lost ${deployEntry.pnl_pct}% — death by a thousand cuts`,
+          fix: "Add underwater PnL checkpoint: if position is below -X% for N consecutive candles with no recovery, force close. E.g., if pnl < -5% and 3+ candles all red → exit before it gets worse.",
+        });
+      }
+    }
   }
 
-  // Duration issue — held too long losing
-  if (deployEntry.minutes_held > 120 && deployEntry.pnl_pct < -5) {
+  // Trailing TP locking in losses — only flag when trailing TP was the actual cause
+  // A genuine trailing TP exit contains "peak → current (dropped)" from state.js
+  // Close reasons like "Out of range" or vague "Trailing TP exit" from the LLM are not pure trailing exits
+  const reason = (deployEntry.close_reason || "").toLowerCase();
+  const isGenuineTrailing = reason.includes("peak") && reason.includes("dropped");
+  if (isGenuineTrailing && deployEntry.pnl_pct < 0) {
     recommendations.push({
-      category: "DURATION",
+      category: "TRAILING_TP_LOSS",
+      severity: "HIGH",
+      issue: `Trailing TP locked in a ${deployEntry.pnl_pct}% loss — trail activated on a losing position and exited underwater`,
+      fix: "Add minimum-profit gate to trailing TP: don't activate trail until position is at least +X% in profit, or set a higher breakeven floor. A trailing stop on a losing position is just a slower stop-loss.",
+    });
+  } else if ((reason.includes("trailing tp") || reason.includes("trailing")) && !reason.includes("out of range") && deployEntry.pnl_pct < 0) {
+    recommendations.push({
+      category: "VAGUE_EXIT_REASON",
       severity: "MEDIUM",
-      issue: `Position held ${deployEntry.minutes_held}m with ${deployEntry.pnl_pct}% loss — no time-based stop`,
-      fix: "Add max-hold stop-loss: if position is underwater >X% after Y minutes, force close. E.g., if pnl < -5% and age > 60m → exit.",
+      issue: `Close reason "${deployEntry.close_reason}" mentions trailing TP but lacks peak/dropped details — likely LLM-crafted rather than system-detected exit`,
+      fix: "LLM should use the exact exit reason from the system. Review the position action flow to ensure the close reason reflects the actual trigger (OOR, SL, low yield, etc.) rather than a generic label.",
+    });
+  }
+
+  // OOR exit — position closed because price left the bin range
+  const isOOR = reason.includes("out of range");
+  if (isOOR) {
+    const oorDir = reason.includes("below") ? "below" : reason.includes("above") ? "above" : "unknown";
+    recommendations.push({
+      category: "OOR_EXIT",
+      severity: "HIGH",
+      issue: `Position closed because price went out of range (${oorDir}) — trailing TP was likely active but OOR timer forced the exit`,
+      fix: "Review bin range width vs volatility at entry. If OOR exits are frequent, widen ranges or reduce deploy size for volatile pools. Consider that trailing TP + OOR combo can trap positions — trailing needs profit but OOR forces exit regardless.",
     });
   }
 
@@ -361,9 +446,14 @@ function buildPrevention(entryCandles, entrySupertrend, positionCandles, deployE
         if (r.includes("out of range")) return "out_of_range";
         if (r.includes("rule 3") || r.includes("above range") || r.includes("pumped")) return "pumped_oor";
         if (r.includes("stop loss") || r.includes("rule 1")) return "stop_loss";
+        if (r.includes("slow bleed") || r.includes("1c")) return "slow_bleed";
         if (r.includes("rule 2") || r.includes("take profit")) return "take_profit";
+        if (r.includes("crash") || r.includes("1b")) return "crash";
         if (r.includes("trailing tp") || r.includes("trailing")) return "trailing";
         if (r.includes("ta_exit")) return "ta_exit";
+        if (r.includes("out of range") || r.includes("oor")) return "oor";
+        if (r.includes("slow bleed")) return "slow_bleed";
+        if (r.includes("agent decision") || r === "exit" || r === "unknown") return "vague";
         return "other";
       }
 

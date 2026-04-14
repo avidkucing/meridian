@@ -2643,6 +2643,33 @@
       "pnl_pct": 0.37,
       "range_efficiency": 10.7,
       "recorded_at": "2026-04-13T10:12:41.413Z"
+    },
+    {
+      "position": "FsH8YyoUZFcF9b29EddfffDniqMpT7Yc3B7VZSCVF7F5",
+      "pool": "uQFKuMm3mJhd8ZpYgGLqFCvtLTpEb6TBWdHYryaEzKV",
+      "pool_name": "BURNIE-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -392,
+        "max": -382,
+        "bins_below": 10,
+        "bins_above": 0
+      },
+      "bin_step": 80,
+      "volatility": 1.77,
+      "fee_tvl_ratio": 0.102,
+      "organic_score": 85,
+      "amount_sol": 0.2,
+      "fees_earned_usd": 0.05000998574179396,
+      "final_value_usd": 17.102605041596977,
+      "initial_value_usd": 17.20153636423305,
+      "minutes_in_range": 1,
+      "minutes_held": 7,
+      "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
+      "pnl_usd": -0.05,
+      "pnl_pct": -0.28,
+      "range_efficiency": 14.3,
+      "recorded_at": "2026-04-14T07:33:36.374Z"
     }
   ]
 }

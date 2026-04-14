@@ -7615,28 +7615,158 @@
       "confirmed_trailing_exit_reason": null,
       "confirmed_trailing_exit_until": null,
       "trailing_active": false
+    },
+    "FsH8YyoUZFcF9b29EddfffDniqMpT7Yc3B7VZSCVF7F5": {
+      "position": "FsH8YyoUZFcF9b29EddfffDniqMpT7Yc3B7VZSCVF7F5",
+      "pool": "uQFKuMm3mJhd8ZpYgGLqFCvtLTpEb6TBWdHYryaEzKV",
+      "pool_name": "BURNIE-SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -392,
+        "max": -382,
+        "bins_below": 10,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -382,
+      "bin_step": 80,
+      "volatility": 1.77,
+      "fee_tvl_ratio": 0.102,
+      "initial_fee_tvl_24h": 0.102,
+      "organic_score": 85,
+      "initial_value_usd": 26.4,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "5m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "5m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=5m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config. Always use bins_above=0."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-14T07:25:38.911Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": true,
+      "closed_at": "2026-04-14T07:33:36.059Z",
+      "notes": [
+        "Auto-closed during state sync (not found on-chain)",
+        "Closed at 2026-04-14T07:33:36.059Z: Trailing TP: Out of range (above) for 5m (limit: 5m)"
+      ],
+      "peak_pnl_pct": 0,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
+    },
+    "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA": {
+      "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+      "pool": "7bHEH5KgKJHdFjRNpJ4DFsjxWKxtmELQaA9g3WcZpWFJ",
+      "pool_name": "BURNIE- SOL",
+      "strategy": "spot",
+      "bin_range": {
+        "min": -317,
+        "max": -307,
+        "bins_below": 10,
+        "bins_above": 0
+      },
+      "amount_sol": 0.2,
+      "amount_x": 0,
+      "active_bin_at_deploy": -307,
+      "bin_step": 100,
+      "volatility": 0.57,
+      "fee_tvl_ratio": 0.1007,
+      "initial_fee_tvl_24h": 0.1007,
+      "organic_score": 85,
+      "initial_value_usd": 29.4,
+      "signal_snapshot": null,
+      "strategy_snapshot": {
+        "id": "spot_in_a_pump",
+        "name": "Spot in a Pump",
+        "author": "Avid",
+        "lp_strategy": "spot",
+        "token_criteria": {
+          "notes": "Tokens that have pumped hard and are near a perceived top. High fee pools only — target the highest available fee tier for the token. bin_step 80-125."
+        },
+        "entry": {
+          "condition": "Token near perceived top after large pump.",
+          "entry_signal": {
+            "indicator": "supertrend",
+            "timeframe": "5m",
+            "require": {
+              "flipped": true,
+              "direction": "BULLISH"
+            }
+          },
+          "single_side": "SOL",
+          "notes": "5m supertrend flips bullish (price breaks above supertrend) — use calculate_supertrend(timeframe=5m) and look for flipped=true + direction=BULLISH. This confirms the pump is mature. Deploy SOL-only below current price immediately. Do not deploy before the signal."
+        },
+        "range": {
+          "type": "default",
+          "notes": "Use TA recomended bin, but never below user binsBelow config. Always use bins_above=0."
+        },
+        "exit": {
+          "notes": "Use the user config."
+        },
+        "best_for": "Fast fee capture during pumps. Default range protects against unexpected dumps; tight range in confirmed strong markets maximizes fee concentration.",
+        "added_at": "2026-04-08T00:00:00.000Z",
+        "updated_at": "2026-04-08T00:00:00.000Z"
+      },
+      "deployed_at": "2026-04-14T07:36:04.225Z",
+      "out_of_range_since": null,
+      "oor_direction": null,
+      "last_claim_at": null,
+      "total_fees_claimed_usd": 0,
+      "rebalance_count": 0,
+      "closed": false,
+      "closed_at": null,
+      "notes": [],
+      "peak_pnl_pct": 0.74,
+      "pending_peak_pnl_pct": null,
+      "pending_peak_started_at": null,
+      "pending_trailing_current_pnl_pct": null,
+      "pending_trailing_peak_pnl_pct": null,
+      "pending_trailing_drop_pct": null,
+      "pending_trailing_started_at": null,
+      "confirmed_trailing_exit_reason": null,
+      "confirmed_trailing_exit_until": null,
+      "trailing_active": false
     }
   },
   "recentEvents": [
-    {
-      "ts": "2026-04-12T20:06:23.407Z",
-      "action": "deploy",
-      "position": "9rHkASMfY3D5szUrzL33jSL4CPCw93eGXcEzqmKkBnCg",
-      "pool_name": "67-SOL"
-    },
-    {
-      "ts": "2026-04-12T21:23:19.034Z",
-      "action": "close",
-      "position": "9rHkASMfY3D5szUrzL33jSL4CPCw93eGXcEzqmKkBnCg",
-      "pool_name": "67-SOL",
-      "reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)"
-    },
-    {
-      "ts": "2026-04-12T21:25:43.597Z",
-      "action": "deploy",
-      "position": "2T4S9Brwt28NyR7uwHP7JGP3kmcfagnpX5cNEE2uGnrc",
-      "pool_name": "Downald-SOL"
-    },
     {
       "ts": "2026-04-13T02:31:05.692Z",
       "action": "close",
@@ -7747,8 +7877,27 @@
       "position": "4V5zFa7cZo4Vdr4PGjHcGnKedYGzzocjMDV3aGgFa8qk",
       "pool_name": "Neukgu- SOL",
       "reason": "Trailing TP: Out of range (above) for 49m (limit: 5m)"
+    },
+    {
+      "ts": "2026-04-14T07:25:38.911Z",
+      "action": "deploy",
+      "position": "FsH8YyoUZFcF9b29EddfffDniqMpT7Yc3B7VZSCVF7F5",
+      "pool_name": "BURNIE-SOL"
+    },
+    {
+      "ts": "2026-04-14T07:33:36.059Z",
+      "action": "close",
+      "position": "FsH8YyoUZFcF9b29EddfffDniqMpT7Yc3B7VZSCVF7F5",
+      "pool_name": "BURNIE-SOL",
+      "reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)"
+    },
+    {
+      "ts": "2026-04-14T07:36:04.225Z",
+      "action": "deploy",
+      "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+      "pool_name": "BURNIE- SOL"
     }
   ],
-  "lastUpdated": "2026-04-13T10:12:41.178Z",
-  "_lastBriefingDate": "2026-04-13"
+  "lastUpdated": "2026-04-14T09:42:07.329Z",
+  "_lastBriefingDate": "2026-04-14"
 }

@@ -13,78 +13,539 @@
     "notes": [],
     "snapshots": [
       {
-        "ts": "2026-04-08T06:15:01.869Z",
-        "position": "HMqaCzyTetahM2Y6wHbavRcLgyyj2ZoPy5zF55MX6Yfs",
-        "pnl_pct": 0.27,
-        "pnl_usd": 0.0456,
-        "in_range": false,
-        "oor_direction": "above",
+        "ts": "2026-04-14T07:48:03.400Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.18,
+        "pnl_usd": -0.0004,
+        "in_range": true,
+        "oor_direction": null,
         "unclaimed_fees_usd": 0,
-        "minutes_out_of_range": 2,
-        "age_minutes": 5
+        "minutes_out_of_range": 0,
+        "age_minutes": 12
       },
       {
-        "ts": "2026-04-08T06:18:00.863Z",
-        "position": "HMqaCzyTetahM2Y6wHbavRcLgyyj2ZoPy5zF55MX6Yfs",
-        "pnl_pct": 0.32,
-        "pnl_usd": 0.0545,
-        "in_range": false,
-        "oor_direction": "above",
+        "ts": "2026-04-14T07:51:03.174Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.15,
+        "pnl_usd": -0.0003,
+        "in_range": true,
+        "oor_direction": null,
         "unclaimed_fees_usd": 0,
-        "minutes_out_of_range": 5,
-        "age_minutes": 8
+        "minutes_out_of_range": 0,
+        "age_minutes": 15
       },
       {
-        "ts": "2026-04-08T06:21:01.627Z",
-        "position": "HMqaCzyTetahM2Y6wHbavRcLgyyj2ZoPy5zF55MX6Yfs",
-        "pnl_pct": 0.44,
-        "pnl_usd": 0.0734,
-        "in_range": false,
-        "oor_direction": "above",
+        "ts": "2026-04-14T07:54:03.846Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.13,
+        "pnl_usd": -0.0003,
+        "in_range": true,
+        "oor_direction": null,
         "unclaimed_fees_usd": 0,
-        "minutes_out_of_range": 8,
-        "age_minutes": 11
+        "minutes_out_of_range": 0,
+        "age_minutes": 18
+      },
+      {
+        "ts": "2026-04-14T07:57:03.060Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.13,
+        "pnl_usd": -0.0003,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0,
+        "minutes_out_of_range": 0,
+        "age_minutes": 21
+      },
+      {
+        "ts": "2026-04-14T08:00:04.359Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.17,
+        "pnl_usd": -0.0003,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0,
+        "minutes_out_of_range": 0,
+        "age_minutes": 24
+      },
+      {
+        "ts": "2026-04-14T08:03:02.629Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.2,
+        "pnl_usd": -0.0004,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0001,
+        "minutes_out_of_range": 0,
+        "age_minutes": 26
+      },
+      {
+        "ts": "2026-04-14T08:06:03.853Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.17,
+        "pnl_usd": -0.0003,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0003,
+        "minutes_out_of_range": 0,
+        "age_minutes": 30
+      },
+      {
+        "ts": "2026-04-14T08:09:03.033Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.05,
+        "pnl_usd": -0.0001,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0009,
+        "minutes_out_of_range": 0,
+        "age_minutes": 33
+      },
+      {
+        "ts": "2026-04-14T08:12:03.424Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.04,
+        "pnl_usd": -0.0001,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0009,
+        "minutes_out_of_range": 0,
+        "age_minutes": 36
+      },
+      {
+        "ts": "2026-04-14T08:15:02.705Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.33,
+        "pnl_usd": -0.0007,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0008,
+        "minutes_out_of_range": 0,
+        "age_minutes": 38
+      },
+      {
+        "ts": "2026-04-14T08:18:03.138Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.2,
+        "pnl_usd": -0.0004,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0008,
+        "minutes_out_of_range": 0,
+        "age_minutes": 42
+      },
+      {
+        "ts": "2026-04-14T08:21:02.276Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.42,
+        "pnl_usd": -0.0008,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0008,
+        "minutes_out_of_range": 0,
+        "age_minutes": 44
+      },
+      {
+        "ts": "2026-04-14T08:24:03.213Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.48,
+        "pnl_usd": -0.001,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0008,
+        "minutes_out_of_range": 0,
+        "age_minutes": 48
+      },
+      {
+        "ts": "2026-04-14T08:27:02.411Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.03,
+        "pnl_usd": -0.0001,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0014,
+        "minutes_out_of_range": 0,
+        "age_minutes": 50
+      },
+      {
+        "ts": "2026-04-14T08:30:03.414Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.84,
+        "pnl_usd": -0.0017,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0013,
+        "minutes_out_of_range": 0,
+        "age_minutes": 54
+      },
+      {
+        "ts": "2026-04-14T08:33:03.432Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.81,
+        "pnl_usd": -0.0016,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 57
+      },
+      {
+        "ts": "2026-04-14T08:36:03.718Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.8,
+        "pnl_usd": -0.0016,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 60
+      },
+      {
+        "ts": "2026-04-14T08:39:02.808Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.63,
+        "pnl_usd": -0.0013,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 62
+      },
+      {
+        "ts": "2026-04-14T08:42:04.418Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0,
+        "pnl_usd": 0,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 66
+      },
+      {
+        "ts": "2026-04-14T08:45:03.220Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.63,
+        "pnl_usd": -0.0013,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 69
+      },
+      {
+        "ts": "2026-04-14T08:48:03.878Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -1,
+        "pnl_usd": -0.002,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 72
+      },
+      {
+        "ts": "2026-04-14T08:51:04.494Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.71,
+        "pnl_usd": -0.0014,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 75
+      },
+      {
+        "ts": "2026-04-14T08:54:02.442Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.54,
+        "pnl_usd": -0.0011,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 77
+      },
+      {
+        "ts": "2026-04-14T08:57:02.910Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.73,
+        "pnl_usd": -0.0015,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 80
+      },
+      {
+        "ts": "2026-04-14T09:00:04.176Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.82,
+        "pnl_usd": -0.0016,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 84
+      },
+      {
+        "ts": "2026-04-14T09:03:03.207Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.97,
+        "pnl_usd": -0.0019,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 87
+      },
+      {
+        "ts": "2026-04-14T09:06:03.484Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -1.06,
+        "pnl_usd": -0.0021,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 90
+      },
+      {
+        "ts": "2026-04-14T09:09:02.706Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.89,
+        "pnl_usd": -0.0018,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0019,
+        "minutes_out_of_range": 0,
+        "age_minutes": 92
+      },
+      {
+        "ts": "2026-04-14T09:12:02.378Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -1.21,
+        "pnl_usd": -0.0024,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 95
+      },
+      {
+        "ts": "2026-04-14T09:15:02.935Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.94,
+        "pnl_usd": -0.0019,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 98
+      },
+      {
+        "ts": "2026-04-14T09:18:03.455Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.96,
+        "pnl_usd": -0.0019,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 102
+      },
+      {
+        "ts": "2026-04-14T09:21:03.065Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.82,
+        "pnl_usd": -0.0016,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 105
+      },
+      {
+        "ts": "2026-04-14T09:24:03.342Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.19,
+        "pnl_usd": -0.0004,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 108
+      },
+      {
+        "ts": "2026-04-14T09:27:03.684Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.75,
+        "pnl_usd": -0.0015,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 111
+      },
+      {
+        "ts": "2026-04-14T09:30:02.856Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.3,
+        "pnl_usd": -0.0006,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 113
+      },
+      {
+        "ts": "2026-04-14T09:33:03.714Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.57,
+        "pnl_usd": -0.0011,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 117
+      },
+      {
+        "ts": "2026-04-14T09:36:03.544Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0.07,
+        "pnl_usd": 0.0001,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 120
+      },
+      {
+        "ts": "2026-04-14T09:39:02.851Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.09,
+        "pnl_usd": -0.0002,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 122
+      },
+      {
+        "ts": "2026-04-14T09:42:03.352Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0.73,
+        "pnl_usd": 0.0015,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0025,
+        "minutes_out_of_range": 0,
+        "age_minutes": 126
+      },
+      {
+        "ts": "2026-04-14T09:45:03.324Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0.12,
+        "pnl_usd": 0.0002,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 129
+      },
+      {
+        "ts": "2026-04-14T09:48:03.125Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0.69,
+        "pnl_usd": 0.0014,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0025,
+        "minutes_out_of_range": 0,
+        "age_minutes": 132
+      },
+      {
+        "ts": "2026-04-14T09:51:02.568Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0.37,
+        "pnl_usd": 0.0007,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 134
+      },
+      {
+        "ts": "2026-04-14T09:54:03.266Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0.17,
+        "pnl_usd": 0.0003,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 138
+      },
+      {
+        "ts": "2026-04-14T10:06:02.337Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0.2,
+        "pnl_usd": 0.0004,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 149
+      },
+      {
+        "ts": "2026-04-14T10:09:03.016Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": 0.02,
+        "pnl_usd": 0,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 153
+      },
+      {
+        "ts": "2026-04-14T10:18:02.498Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.15,
+        "pnl_usd": -0.0003,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 161
+      },
+      {
+        "ts": "2026-04-14T10:21:03.229Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.36,
+        "pnl_usd": -0.0007,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 165
+      },
+      {
+        "ts": "2026-04-14T10:24:03.279Z",
+        "position": "8VErCXqFSZJYYn8r1oyPEALxMvFYgqxJpCYtNnT9C8KA",
+        "pnl_pct": -0.3,
+        "pnl_usd": -0.0006,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0024,
+        "minutes_out_of_range": 0,
+        "age_minutes": 168
       }
     ]
   },
   "7ik5kwcwjD9W22THNqU5spBA9pELjhzfPg2eGvKtNEGn": {
     "name": "CHIBI- SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T06:56:56.692Z",
-        "pnl_pct": 0.09,
-        "pnl_usd": 0.01,
-        "range_efficiency": 83.3,
-        "minutes_held": 30,
-        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 2.77
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T09:04:59.998Z",
-        "pnl_pct": 3.16,
-        "pnl_usd": 0.78,
-        "range_efficiency": 100,
-        "minutes_held": 27,
-        "close_reason": "Trailing TP: peak 3.48% → current 2.91% (dropped 0.57% >= 0.5%)",
-        "strategy": "spot",
-        "volatility_at_deploy": 7.38
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T09:22:28.808Z",
-        "pnl_pct": 0.15,
-        "pnl_usd": 0.04,
-        "range_efficiency": 61.5,
-        "minutes_held": 13,
-        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 6.7
-      }
-    ],
+    "deploys": [],
     "total_deploys": 3,
     "avg_pnl_pct": 1.13,
     "win_rate": 1,
@@ -628,17 +1089,6 @@
     "name": "BURNIE-SOL",
     "base_mint": null,
     "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-08T07:45:08.346Z",
-        "pnl_pct": -0.18,
-        "pnl_usd": -0.03,
-        "range_efficiency": 100,
-        "minutes_held": 60,
-        "close_reason": "⚡ Trailing TP: Low yield: fee/TVL 3.71% < min 7% (age: 60m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 2.12
-      },
       {
         "deployed_at": null,
         "closed_at": "2026-04-11T23:06:25.069Z",
@@ -1224,19 +1674,7 @@
   "2RX1ZogEMsjv1YjMF3m5U1DN7gVCtSLaQHs27F17ECve": {
     "name": "WOJAK-SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-08T08:47:39.032Z",
-        "pnl_pct": 0.22,
-        "pnl_usd": 0.04,
-        "range_efficiency": 44.4,
-        "minutes_held": 54,
-        "close_reason": "Trailing TP: Out of range (above) for 30m (limit: 30m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 0.46
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": 0.22,
     "win_rate": 1,
@@ -1449,19 +1887,7 @@
   "FCL8pjNQsDAggZVczYfnn6tfbYoMnJykGT2cpdTULAxB": {
     "name": "PENGUIN/SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T08:33:50.743Z",
-        "pnl_pct": 0.34,
-        "pnl_usd": 0.08,
-        "range_efficiency": 71.4,
-        "minutes_held": 21,
-        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 2.68
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": 0.34,
     "win_rate": 1,
@@ -2005,50 +2431,6 @@
     "name": "Iroha-SOL",
     "base_mint": null,
     "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T07:18:32.710Z",
-        "pnl_pct": 1.95,
-        "pnl_usd": 0.4,
-        "range_efficiency": 100,
-        "minutes_held": 162,
-        "close_reason": "⚡ Trailing TP: Trailing TP: peak 2.21% → current 1.54% (dropped 0.67% >= 0.5%)",
-        "strategy": "spot",
-        "volatility_at_deploy": 2.61
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T07:28:36.138Z",
-        "pnl_pct": 0.04,
-        "pnl_usd": 0.01,
-        "range_efficiency": 0,
-        "minutes_held": 6,
-        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 1.59
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T07:38:05.225Z",
-        "pnl_pct": 0.24,
-        "pnl_usd": 0.04,
-        "range_efficiency": 14.3,
-        "minutes_held": 7,
-        "close_reason": "Trailing TP: Out of range (above) for 6m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 1.62
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T08:22:20.468Z",
-        "pnl_pct": -4.09,
-        "pnl_usd": -0.67,
-        "range_efficiency": 86.8,
-        "minutes_held": 38,
-        "close_reason": "Trailing TP: Out of range (below) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 1.74
-      },
       {
         "deployed_at": null,
         "closed_at": "2026-04-12T10:10:59.739Z",
@@ -2616,19 +2998,7 @@
   "ECDUCaoDkggGpsSbrE67mfZkfL7ey4LKB15GCA9qf1Qd": {
     "name": "49-SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T07:44:42.163Z",
-        "pnl_pct": -0.16,
-        "pnl_usd": -0.03,
-        "range_efficiency": 0,
-        "minutes_held": 7,
-        "close_reason": "Trailing TP: Out of range (above) for 6m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 0.7
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": -0.16,
     "win_rate": 0,
@@ -3171,30 +3541,7 @@
   "BkBejVEeozPB98HivKMsLAivHaJ8k5QGaQvg8HvoWnUM": {
     "name": "Iroha-SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T08:48:32.845Z",
-        "pnl_pct": 1.29,
-        "pnl_usd": 0.32,
-        "range_efficiency": 100,
-        "minutes_held": 24,
-        "close_reason": "Trailing TP: peak 2.53% → current 1.32% (dropped 1.21% >= 0.5%)",
-        "strategy": "spot",
-        "volatility_at_deploy": 3.37
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T11:27:00.894Z",
-        "pnl_pct": -0.06,
-        "pnl_usd": -0.01,
-        "range_efficiency": 53.8,
-        "minutes_held": 13,
-        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 2.73
-      }
-    ],
+    "deploys": [],
     "total_deploys": 2,
     "avg_pnl_pct": 0.62,
     "win_rate": 0.5,
@@ -3385,19 +3732,7 @@
   "CV1XsvfSNs2i9uSSrGH2MsGpGFpUuFgeV2WaZj9YAihL": {
     "name": "PANDU-SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-09T11:11:45.597Z",
-        "pnl_pct": 1.98,
-        "pnl_usd": 0.49,
-        "range_efficiency": 100,
-        "minutes_held": 117,
-        "close_reason": "Trailing TP triggered - dropped 0.81% from peak 2.50% to current 1.69%",
-        "strategy": "spot",
-        "volatility_at_deploy": 2.49
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": 1.98,
     "win_rate": 1,
@@ -3949,19 +4284,7 @@
   "3WY9N19nTtPSqrbWTeaFn2HfJ9MfdyLRSrRvy97GnDgY": {
     "name": "TripleT- SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T01:07:27.967Z",
-        "pnl_pct": 0,
-        "pnl_usd": 0,
-        "range_efficiency": 50,
-        "minutes_held": 10,
-        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 3.36
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": 0,
     "win_rate": 1,
@@ -4032,28 +4355,6 @@
     "name": "GENZ-80",
     "base_mint": null,
     "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T01:33:41.892Z",
-        "pnl_pct": 2.6,
-        "pnl_usd": 0.65,
-        "range_efficiency": 72.7,
-        "minutes_held": 22,
-        "close_reason": "⚡ Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 1.28
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T06:23:30.745Z",
-        "pnl_pct": -0.12,
-        "pnl_usd": -0.05,
-        "range_efficiency": 28.6,
-        "minutes_held": 7,
-        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 1.22
-      },
       {
         "deployed_at": null,
         "closed_at": "2026-04-11T06:01:24.624Z",
@@ -4324,19 +4625,7 @@
   "7abBVKH9vXwy4sXa6hh6chwmNECpVnB6t9BhNx9PJ35y": {
     "name": "Tortellini-SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T01:49:09.996Z",
-        "pnl_pct": -0.03,
-        "pnl_usd": -0.01,
-        "range_efficiency": 28.6,
-        "minutes_held": 7,
-        "close_reason": "⚡ Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "spot",
-        "volatility_at_deploy": 4.33
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": -0.03,
     "win_rate": 0,
@@ -4396,83 +4685,6 @@
     "name": "GHOST- SOL",
     "base_mint": null,
     "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T02:01:01.327Z",
-        "pnl_pct": -0.37,
-        "pnl_usd": -0.09,
-        "range_efficiency": 87.5,
-        "minutes_held": 8,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "spot",
-        "volatility_at_deploy": 3.72
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T04:19:14.623Z",
-        "pnl_pct": -0.12,
-        "pnl_usd": -0.05,
-        "range_efficiency": 100,
-        "minutes_held": 60,
-        "close_reason": "Trailing TP: Low yield: fee/TVL 0.39% < min 7% (age: 60m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 1.72
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T10:51:10.445Z",
-        "pnl_pct": -0.43,
-        "pnl_usd": -0.18,
-        "range_efficiency": 67.4,
-        "minutes_held": 46,
-        "close_reason": "Trailing TP: Out of range (above) for 15m (limit: 15m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 4.78
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T12:36:27.388Z",
-        "pnl_pct": 0.29,
-        "pnl_usd": 0.12,
-        "range_efficiency": 75,
-        "minutes_held": 32,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 2.36
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T14:15:20.326Z",
-        "pnl_pct": 0.83,
-        "pnl_usd": 0.35,
-        "range_efficiency": 40.7,
-        "minutes_held": 27,
-        "close_reason": "Trailing TP: Out of range (above) for 15m (limit: 15m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 3.56
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T18:24:30.807Z",
-        "pnl_pct": -0.01,
-        "pnl_usd": 0,
-        "range_efficiency": 42.9,
-        "minutes_held": 7,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 4.21
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T19:26:30.410Z",
-        "pnl_pct": 0.75,
-        "pnl_usd": 0.32,
-        "range_efficiency": 100,
-        "minutes_held": 60,
-        "close_reason": "CLOSE — ⚡ Trailing TP: Low yield: fee/TVL 3.10% < min 7% (age: 60m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 4.76
-      },
       {
         "deployed_at": null,
         "closed_at": "2026-04-12T17:44:03.469Z",
@@ -5036,19 +5248,7 @@
   "8Ya4nn8M9HPPEYKjVKH1E7UP6RXzZ6BAhuC5FrPtbEQr": {
     "name": "BP- SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T05:55:51.461Z",
-        "pnl_pct": -0.22,
-        "pnl_usd": -0.09,
-        "range_efficiency": 54.5,
-        "minutes_held": 11,
-        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 0.92
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": -0.22,
     "win_rate": 0,
@@ -5118,19 +5318,7 @@
   "EaNEbneW1YsfE9h6cDNs3jdiqvz7ynWWPMUK2dvcZQH6": {
     "name": "GENZ-SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T07:10:11.299Z",
-        "pnl_pct": 0.09,
-        "pnl_usd": 0.04,
-        "range_efficiency": 51.4,
-        "minutes_held": 35,
-        "close_reason": "Trailing TP: Out of range (above) for 16m (limit: 15m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 1.03
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": 0.09,
     "win_rate": 1,
@@ -5289,61 +5477,6 @@
     "name": "114514- SOL",
     "base_mint": null,
     "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T07:32:33.080Z",
-        "pnl_pct": 0.03,
-        "pnl_usd": 0.01,
-        "range_efficiency": 50,
-        "minutes_held": 6,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 5.5
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T07:42:30.843Z",
-        "pnl_pct": -0.04,
-        "pnl_usd": -0.02,
-        "range_efficiency": 25,
-        "minutes_held": 4,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 5.35
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T08:06:31.946Z",
-        "pnl_pct": -0.01,
-        "pnl_usd": -0.01,
-        "range_efficiency": 100,
-        "minutes_held": 1,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 3.65
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T08:37:10.050Z",
-        "pnl_pct": 0.06,
-        "pnl_usd": 0.02,
-        "range_efficiency": 51.9,
-        "minutes_held": 27,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 3.89
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T09:00:31.931Z",
-        "pnl_pct": -0.01,
-        "pnl_usd": 0,
-        "range_efficiency": 13.3,
-        "minutes_held": 15,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 3.63
-      },
       {
         "deployed_at": null,
         "closed_at": "2026-04-11T03:47:27.015Z",
@@ -5788,19 +5921,7 @@
   "DWBHgbWAfzD3yxha9ZUhLFbT5CVy8JULsSRREhMPdpPJ": {
     "name": "NGOGO- SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T11:41:36.228Z",
-        "pnl_pct": 0.11,
-        "pnl_usd": 0.04,
-        "range_efficiency": 11.1,
-        "minutes_held": 18,
-        "close_reason": "Trailing TP: Out of range (above) for 15m (limit: 15m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 2.91
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": 0.11,
     "win_rate": 1,
@@ -5893,17 +6014,6 @@
     "name": "Wcoin- SOL",
     "base_mint": null,
     "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T13:34:36.407Z",
-        "pnl_pct": 1.11,
-        "pnl_usd": 0.47,
-        "range_efficiency": 100,
-        "minutes_held": 54,
-        "close_reason": "Trailing TP: peak 2.03% → current 1.36% (dropped 0.67% >= 0.5%)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 5.51
-      },
       {
         "deployed_at": null,
         "closed_at": "2026-04-11T22:31:49.226Z",
@@ -6315,30 +6425,7 @@
   "HKFs718kPWVqRcLZBWWuwsXzt3Z4hKW5Pf3kAdTxxS4r": {
     "name": "BULL- SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T15:35:06.200Z",
-        "pnl_pct": -0.42,
-        "pnl_usd": -0.18,
-        "range_efficiency": 100,
-        "minutes_held": 61,
-        "close_reason": "Low yield: fee/TVL 4.19% < min 7% (age: 60m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 2.01
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T18:04:16.827Z",
-        "pnl_pct": -0.02,
-        "pnl_usd": -0.01,
-        "range_efficiency": 100,
-        "minutes_held": 60,
-        "close_reason": "Trailing TP: Low yield: fee/TVL 6.41% < min 7% (age: 60m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 2.63
-      }
-    ],
+    "deploys": [],
     "total_deploys": 2,
     "avg_pnl_pct": -0.22,
     "win_rate": 0,
@@ -6824,19 +6911,7 @@
   "EnWuoyUfQHBNN7zUpBLnbgarGwtW6pbLqV7NM3eXRHTM": {
     "name": "我的刀盾-SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T16:17:40.094Z",
-        "pnl_pct": -0.13,
-        "pnl_usd": -0.06,
-        "range_efficiency": 48.3,
-        "minutes_held": 29,
-        "close_reason": "⚡ Trailing TP: Out of range (above) for 15m (limit: 15m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 2.49
-      }
-    ],
+    "deploys": [],
     "total_deploys": 1,
     "avg_pnl_pct": -0.13,
     "win_rate": 0,
@@ -6962,28 +7037,6 @@
     "name": "Neukgu- SOL",
     "base_mint": null,
     "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T19:54:27.257Z",
-        "pnl_pct": 0.28,
-        "pnl_usd": 0.12,
-        "range_efficiency": 16.7,
-        "minutes_held": 6,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 5.43
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T21:15:32.283Z",
-        "pnl_pct": 1.5,
-        "pnl_usd": 0.64,
-        "range_efficiency": 92.5,
-        "minutes_held": 67,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 3.92
-      },
       {
         "deployed_at": null,
         "closed_at": "2026-04-11T06:54:34.333Z",
@@ -7560,30 +7613,7 @@
   "Da6gBAjx2G4V1zbk7DNkKfDAzk3VVxS3aCoe5QN3TbxJ": {
     "name": "67- SOL",
     "base_mint": null,
-    "deploys": [
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-10T23:18:20.150Z",
-        "pnl_pct": 0.31,
-        "pnl_usd": 0.13,
-        "range_efficiency": 67.7,
-        "minutes_held": 31,
-        "close_reason": "Rule 3: pumped far above range",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 1.84
-      },
-      {
-        "deployed_at": null,
-        "closed_at": "2026-04-11T00:31:17.330Z",
-        "pnl_pct": -0.2,
-        "pnl_usd": -0.08,
-        "range_efficiency": 100,
-        "minutes_held": 60,
-        "close_reason": "Trailing TP: Low yield: fee/TVL 1.17% < min 5% (age: 60m)",
-        "strategy": "bid_ask",
-        "volatility_at_deploy": 6.67
-      }
-    ],
+    "deploys": [],
     "total_deploys": 2,
     "avg_pnl_pct": 0.05,
     "win_rate": 0.5,
@@ -8998,15 +9028,26 @@
         "close_reason": "Rule 3: pumped far above range",
         "strategy": "bid_ask",
         "volatility_at_deploy": 3.67
+      },
+      {
+        "deployed_at": null,
+        "closed_at": "2026-04-14T07:33:36.374Z",
+        "pnl_pct": -0.28,
+        "pnl_usd": -0.05,
+        "range_efficiency": 14.3,
+        "minutes_held": 7,
+        "close_reason": "Trailing TP: Out of range (above) for 5m (limit: 5m)",
+        "strategy": "spot",
+        "volatility_at_deploy": 1.77
       }
     ],
-    "total_deploys": 1,
-    "avg_pnl_pct": 0.49,
-    "win_rate": 1,
+    "total_deploys": 2,
+    "avg_pnl_pct": 0.1,
+    "win_rate": 0.5,
     "adjusted_win_rate": 0,
     "adjusted_win_rate_sample_count": 0,
-    "last_deployed_at": "2026-04-11T23:27:22.355Z",
-    "last_outcome": "profit",
+    "last_deployed_at": "2026-04-14T07:33:36.374Z",
+    "last_outcome": "loss",
     "notes": [],
     "snapshots": [
       {
@@ -9074,6 +9115,39 @@
         "unclaimed_fees_usd": 0.0071,
         "minutes_out_of_range": 3,
         "age_minutes": 15
+      },
+      {
+        "ts": "2026-04-14T07:27:03.150Z",
+        "position": "FsH8YyoUZFcF9b29EddfffDniqMpT7Yc3B7VZSCVF7F5",
+        "pnl_pct": -0.03,
+        "pnl_usd": -0.0001,
+        "in_range": true,
+        "oor_direction": null,
+        "unclaimed_fees_usd": 0.0001,
+        "minutes_out_of_range": 0,
+        "age_minutes": 1
+      },
+      {
+        "ts": "2026-04-14T07:30:02.304Z",
+        "position": "FsH8YyoUZFcF9b29EddfffDniqMpT7Yc3B7VZSCVF7F5",
+        "pnl_pct": -0.03,
+        "pnl_usd": -0.0001,
+        "in_range": false,
+        "oor_direction": "above",
+        "unclaimed_fees_usd": 0.0001,
+        "minutes_out_of_range": 2,
+        "age_minutes": 4
+      },
+      {
+        "ts": "2026-04-14T07:32:50.717Z",
+        "position": "FsH8YyoUZFcF9b29EddfffDniqMpT7Yc3B7VZSCVF7F5",
+        "pnl_pct": -0.03,
+        "pnl_usd": -0.0001,
+        "in_range": false,
+        "oor_direction": "above",
+        "unclaimed_fees_usd": 0.0001,
+        "minutes_out_of_range": 5,
+        "age_minutes": 7
       }
     ]
   },

@@ -170,75 +170,89 @@ function stopCronJobs() {
 // ═══════════════════════════════════════════
 
 /**
- * Check if a position is experiencing a high-volume crash with no recovery.
- * Returns exit reason if detected, null otherwise.
+ * Analyze recent 5m candles for exit-worthy patterns.
+ * Returns { reason, type } if detected, null otherwise.
  *
- * Logic:
- * 1. Fetch recent 5m candles
- * 2. Find largest single-candle drop
- * 3. If drop > 10% AND volume > 3x average → crash candidate
- * 4. Check if next 1-2 candles recovered > 50% of crash range
- * 5. If no recovery → high probability of continuation → exit
+ * Detects:
+ * 1. CRASH — single-candle high-volume dump with no recovery
+ * 2. SLOW_BLEED — consecutive red candles + sustained decline, no single dramatic candle
  */
-async function checkCrashExit(positionData, pnlSuspect) {
-  if (pnlSuspect) return null; // skip if PnL data is suspect
+async function checkCandleExit(positionData) {
   if ((positionData.age_minutes ?? 0) < 15) return null; // need some history
 
   try {
     const candles = await fetchOHLCV({ poolAddress: positionData.pool, timeframe: "5m" });
-    if (candles.length < 6) return null; // need at least a few candles
+    if (candles.length < 6) return null;
 
-    // Find largest single-candle drop
+    const avgVol = candles.reduce((s, c) => s + c.volume, 0) / candles.length;
+
+    // ── CRASH detection ──────────────────────────────────────
     let maxDropIdx = -1;
     let maxDropPct = 0;
     for (let i = 1; i < candles.length; i++) {
       const drop = (candles[i].close - candles[i - 1].close) / candles[i - 1].close * 100;
-      if (drop < maxDropPct) {
-        maxDropPct = drop;
-        maxDropIdx = i;
+      if (drop < maxDropPct) { maxDropPct = drop; maxDropIdx = i; }
+    }
+
+    if (maxDropPct <= -10) {
+      const crashVol = candles[maxDropIdx].volume;
+      if (crashVol >= avgVol * 3) {
+        const crashOpen = candles[maxDropIdx - 1].close;
+        const crashClose = candles[maxDropIdx].close;
+        const crashRange = crashOpen - crashClose;
+        const recoveryCandles = candles.slice(maxDropIdx + 1, maxDropIdx + 3);
+
+        if (recoveryCandles.length > 0) {
+          const maxRecovery = Math.max(...recoveryCandles.map(c => c.close));
+          const recovered = maxRecovery - crashClose;
+          const recoveryPct = recovered / crashRange;
+
+          if (recoveryPct <= 0.5) {
+            return {
+              reason: `Crash: -${Math.abs(maxDropPct).toFixed(1)}% candle with ${((crashVol / avgVol - 1) * 100).toFixed(0)}% vol spike, only ${(recoveryPct * 100).toFixed(0)}% recovery — continuation likely`,
+              type: "crash",
+            };
+          }
+        } else if (maxDropPct < -15) {
+          return {
+            reason: `Severe crash: -${Math.abs(maxDropPct).toFixed(1)}% candle with ${((crashVol / avgVol - 1) * 100).toFixed(0)}% vol spike — emergency exit`,
+            type: "crash",
+          };
+        }
       }
     }
 
-    // Need at least -10% drop to qualify
-    if (maxDropPct > -10) return null;
+    // ── SLOW BLEED detection ────────────────────────────────
+    // Criteria: ≥70% down candles AND sustained price decline
+    // "Down candle" = close < open OR close < prev close (catches flat step-down candles)
+    const lookback = Math.min(candles.length - 1, 12); // last 12 candles max
+    const recent = candles.slice(-lookback - 1);
 
-    // Check volume: crash candle must be > 3x average
-    const avgVol = candles.reduce((s, c) => s + c.volume, 0) / candles.length;
-    const crashVol = candles[maxDropIdx].volume;
-    if (crashVol < avgVol * 3) return null;
-
-    // Check recovery: did the next 1-2 candles reclaim > 50% of the crash range?
-    const crashOpen = candles[maxDropIdx - 1].close;
-    const crashClose = candles[maxDropIdx].close;
-    const crashRange = crashOpen - crashClose;
-    const recoveryCandles = candles.slice(maxDropIdx + 1, maxDropIdx + 3);
-
-    if (recoveryCandles.length > 0) {
-      const maxRecovery = Math.max(...recoveryCandles.map(c => c.close));
-      const recovered = maxRecovery - crashClose;
-      const recoveryPct = recovered / crashRange;
-
-      if (recoveryPct > 0.5) {
-        // Good recovery — likely just a wick, not a crash continuation
-        return null;
-      }
-
-      // Low recovery + high volume crash = continuation likely
-      return {
-        reason: `Crash: -${Math.abs(maxDropPct).toFixed(1)}% candle with ${((crashVol / avgVol - 1) * 100).toFixed(0)}% vol spike, only ${(recoveryPct * 100).toFixed(0)}% recovery — continuation likely`,
-      };
+    let downCount = 0;
+    let lowerLows = 0;
+    for (let i = 1; i < recent.length; i++) {
+      const isRedCandle = recent[i].close < recent[i].open;
+      const isStepDown = recent[i].close < recent[i - 1].close;
+      if (isRedCandle || isStepDown) downCount++;
+      if (isStepDown) lowerLows++;
     }
+    const downRatio = lowerLows / (recent.length - 1);
 
-    // Crash was the most recent candle — no recovery data yet, but it's severe
-    if (maxDropIdx === candles.length - 1 && maxDropPct < -15) {
-      return {
-        reason: `Severe crash: -${Math.abs(maxDropPct).toFixed(1)}% candle with ${((crashVol / avgVol - 1) * 100).toFixed(0)}% vol spike — emergency exit`,
-      };
+    if (downCount >= 4 && downRatio >= 0.5) {
+      const firstClose = recent[0].close;
+      const lastClose = recent[recent.length - 1].close;
+      const totalDecline = ((lastClose - firstClose) / firstClose * 100).toFixed(1);
+      if (parseFloat(totalDecline) > 0) {
+        return {
+          reason: `Slow bleed: ${downCount}/${recent.length - 1} down candles, ${Math.round(downRatio * 100)}% lower-lows, price declined ${totalDecline}% — sustained sell pressure`,
+          type: "slow_bleed",
+        };
+      }
     }
 
     return null;
   } catch {
-    return null; // don't fail management on fetch errors
+    return null;
   }
 }
 
@@ -344,11 +358,11 @@ export async function runManagementCycle({ silent = false } = {}) {
         actionMap.set(p.position, { action: "CLOSE", rule: 1, reason: "stop loss" });
         continue;
       }
-      // Rule 1b: crash detection — high-volume single-candle dump with no recovery
+      // Rule 1b: candle analysis — crash or slow bleed
       if (!actionMap.has(p.position)) {
-        const crashCheck = await checkCrashExit(p, pnlSuspect).catch(() => null);
-        if (crashCheck) {
-          actionMap.set(p.position, { action: "CLOSE", rule: "1b", reason: crashCheck.reason });
+        const candleCheck = await checkCandleExit(p).catch(() => null);
+        if (candleCheck) {
+          actionMap.set(p.position, { action: "CLOSE", rule: candleCheck.type === "crash" ? "1b" : "1c", reason: candleCheck.reason });
           continue;
         }
       }
@@ -498,6 +512,13 @@ RULES:
 - CLAIM: call claim_fees with position address
 - INSTRUCTION: evaluate the instruction condition. If met → close_position. If not → HOLD, do nothing.
 - ⚡ exit alerts: close immediately, no exceptions
+
+IMPORTANT: When calling close_position, you MUST pass the EXACT reason shown in the action line.
+Do NOT rewrite, summarize, or invent a new reason. Copy it verbatim.
+Examples:
+  rule: "exit", reason: "Out of range (below) for 15m (limit: 15m)" → reason: "Out of range (below) for 15m (limit: 15m)"
+  rule: "exit", reason: "Trailing TP: peak 20.00% → current 10.00% (dropped 10.00% >= 8.00%)" → reason: "Trailing TP: peak 20.00% → current 10.00% (dropped 10.00% >= 8.00%)"
+  rule: 1, reason: "stop loss" → reason: "stop loss"
 
 Execute the required actions. Do NOT re-evaluate CLOSE/CLAIM — rules already applied. Just execute.
 After executing, write a brief one-line result per position.
@@ -676,14 +697,36 @@ export async function runScreeningCycle({ silent = false } = {}) {
             }
           }
 
-          // Check extended move
+          // Check extended move — both net change AND candle range
           if (candles.length >= 5) {
             const firstOpen = candles[0].open;
             const lastClose = candles[candles.length - 1].close;
             const changePct = Math.abs((lastClose - firstOpen) / firstOpen * 100);
             if (changePct > maxPreEntry) {
               log("screening", `  ⏭️ ${candidate.pool.name}: pre-entry price moved ${changePct.toFixed(1)}% in ${sig.timeframe} (max ${maxPreEntry}%)`);
-              filteredOut.push({ name: candidate.pool.name, reason: `extended move: ${changePct.toFixed(1)}% in ${sig.timeframe} window` });
+              filteredOut.push({ name: candidate.pool.name, reason: `extended move: ${changePct.toFixed(1)}% net change in ${sig.timeframe} window` });
+              continue;
+            }
+
+            // Range check: high-to-low range matters even when net change is small
+            const highestHigh = Math.max(...candles.map(c => c.high));
+            const lowestLow = Math.min(...candles.map(c => c.low));
+            const rangePct = ((highestHigh - lowestLow) / lowestLow * 100);
+            const maxRange = config.management.maxPreEntryRangePct ?? 20;
+            if (rangePct > maxRange) {
+              log("screening", `  ⏭️ ${candidate.pool.name}: pre-entry candle range ${rangePct.toFixed(1)}% (high ${highestHigh} → low ${lowestLow}) exceeds ${maxRange}% max`);
+              filteredOut.push({ name: candidate.pool.name, reason: `extended range: ${rangePct.toFixed(1)}% in ${sig.timeframe} window (max ${maxRange}%)` });
+              continue;
+            }
+
+            // Volume trend: reject pools with drying-up volume at entry
+            const avgVol = candles.reduce((s, c) => s + c.volume, 0) / candles.length;
+            const recentVol = candles.slice(-3).reduce((s, c) => s + c.volume, 0) / 3;
+            const volChange = avgVol > 0 ? ((recentVol / avgVol - 1) * 100) : 0;
+            const maxVolDecline = config.screening.maxVolDeclinePct ?? 25;
+            if (volChange < -maxVolDecline) {
+              log("screening", `  ⏭️ ${candidate.pool.name}: volume drying up — recent vol ${volChange.toFixed(0)}% vs avg (max decline: ${maxVolDecline}%)`);
+              filteredOut.push({ name: candidate.pool.name, reason: `volume declining: ${volChange.toFixed(0)}% vs avg in ${sig.timeframe} window` });
               continue;
             }
           }
@@ -965,13 +1008,35 @@ Summarize the current portfolio health, total fees earned, and performance of al
   }, { timezone: 'UTC' });
 
   // Lightweight 30s PnL poller — updates trailing TP state between management cycles, no LLM
+  // Also checks for crash dumps via volume-weighted candle analysis
   let _pnlPollBusy = false;
+  const _lastPnlSnapshot = new Map(); // position -> pnl_pct, for detecting sudden drops
   const pnlPollInterval = setInterval(async () => {
     if (_managementBusy || _screeningBusy || _pnlPollBusy) return;
     _pnlPollBusy = true;
     try {
       const result = await getMyPositions({ force: true, silent: true }).catch(() => null);
       if (!result?.positions?.length) return;
+
+      // ── Candle-based exit detection (crash + slow bleed) ──
+      for (const p of result.positions) {
+        if (p.pnl_pct_suspicious || p.pnl_pct == null) continue;
+        const prev = _lastPnlSnapshot.get(p.position);
+        _lastPnlSnapshot.set(p.position, p.pnl_pct);
+
+        // Fast trigger: sudden PnL drop between polls
+        const fastTrigger = prev != null && (p.pnl_pct - prev) <= -5;
+        if (fastTrigger) {
+          const candleCheck = await checkCandleExit(p).catch(() => null);
+          if (candleCheck) {
+            log("state", `[PnL poll] ${candleCheck.type === "crash" ? "Crash" : "Slow bleed"} detected: ${p.pair} — ${candleCheck.reason}`);
+            runManagementCycle({ silent: true }).catch((e) => log("cron_error", `Poll-crash management failed: ${e.message}`));
+            return; // exit poller, let management handle it
+          }
+        }
+      }
+
+      // ── Standard exit checks ──
       for (const p of result.positions) {
         if (!p.pnl_pct_suspicious && queuePeakConfirmation(p.position, p.pnl_pct)) {
           schedulePeakConfirmation(p.position);
