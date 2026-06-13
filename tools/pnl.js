@@ -99,6 +99,10 @@ async function getJupiterPrices(mints) {
   }
 }
 
+// Rate-limit suspicious-tick warns: at most once per minute per position
+const _suspiciousWarnAt = new Map();
+const SUSPICIOUS_WARN_INTERVAL_MS = 60_000;
+
 // ─── Deposit-history cache (sig-invalidated + TTL) ──────────────
 // Deposits/withdrawals/claimed fees change only on a position tx; feePerTvl24h
 // is a slow 24h pool stat. Cache per pool, refetch when any position's latest
@@ -194,7 +198,11 @@ function buildPosition(f, prices, solUsd, meteora, solMode) {
   const depositsMissing = (solMode ? depositsSol : depositsUsd) <= 0;
   const pnlPctSuspicious = priceMissing || depositsMissing;
   if (pnlPctSuspicious) {
-    log("pnl_warn", `${f.position.slice(0, 8)} suspicious tick — priceMissing=${priceMissing} depositsMissing=${depositsMissing} (solUsd=${solUsd}, priceX=${priceX})`);
+    const lastWarn = _suspiciousWarnAt.get(f.position) ?? 0;
+    if (Date.now() - lastWarn >= SUSPICIOUS_WARN_INTERVAL_MS) {
+      _suspiciousWarnAt.set(f.position, Date.now());
+      log("pnl_warn", `${f.position.slice(0, 8)} suspicious tick — priceMissing=${priceMissing} depositsMissing=${depositsMissing} (solUsd=${solUsd}, priceX=${priceX})`);
+    }
   }
 
   const inRange = f.active != null && f.lower != null && f.upper != null

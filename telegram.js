@@ -419,6 +419,7 @@ const BOT_COMMANDS = [
   { command: "set",        description: "Set note/instruction on position" },
   { command: "config",     description: "Show important runtime config" },
   { command: "settings",   description: "Button menu for common config" },
+  { command: "menu",       description: "Button menu for common config" },
   { command: "setcfg",     description: "Update persisted config key" },
   { command: "screen",     description: "Refresh deterministic candidate list" },
   { command: "candidates", description: "Show latest cached candidates" },
@@ -483,12 +484,15 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
   );
 }
 
-export async function notifyClose({ pair, pnlUsd, pnlPct }) {
+export async function notifyClose({ pair, pnlUsd, pnlPct, solMode = false }) {
   if (hasActiveLiveMessage()) return;
   const sign = pnlUsd >= 0 ? "+" : "";
+  const pnlDisplay = solMode
+    ? `${sign}◎${(pnlUsd ?? 0).toFixed(4)}`
+    : `${sign}$${(pnlUsd ?? 0).toFixed(2)}`;
   await sendHTML(
     `🔒 <b>Closed</b> ${pair}\n` +
-    `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`
+    `PnL: ${pnlDisplay} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`
   );
 }
 
@@ -501,10 +505,11 @@ export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOu
   );
 }
 
-export async function notifyOutOfRange({ pair, minutesOOR }) {
+export async function notifyOutOfRange({ pair, minutesOOR, direction }) {
   if (hasActiveLiveMessage()) return;
+  const dirText = direction ? ` (${direction})` : '';
   await sendHTML(
-    `⚠️ <b>Out of Range</b> ${pair}\n` +
+    `⚠️ <b>Out of Range${dirText}</b> ${pair}\\n` +
     `Been OOR for ${minutesOOR} minutes`
   );
 }

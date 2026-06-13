@@ -67,6 +67,7 @@ export function trackPosition({
   volatility,
   fee_tvl_ratio,
   organic_score,
+  price_vs_ath_pct = null,
   initial_value_usd,
   signal_snapshot = null,
   entry_mcap = null,
@@ -89,6 +90,7 @@ export function trackPosition({
     fee_tvl_ratio,
     initial_fee_tvl_24h: fee_tvl_ratio,
     organic_score,
+    price_vs_ath_pct: price_vs_ath_pct ?? null,
     initial_value_usd,
     entry_mcap,
     entry_tvl,
@@ -97,6 +99,7 @@ export function trackPosition({
     signal_snapshot: signal_snapshot || null,
     deployed_at: new Date().toISOString(),
     out_of_range_since: null,
+    out_of_range_direction: null,
     last_claim_at: null,
     total_fees_claimed_usd: 0,
     rebalance_count: 0,
@@ -119,20 +122,30 @@ export function trackPosition({
 
 /**
  * Mark a position as out of range (sets timestamp on first detection).
+ * @param {string} position_address
+ * @param {'above'|'below'|null} direction - 'above' if price is above upper bin, 'below' if below lower bin, null if in range
  */
-export function markOutOfRange(position_address) {
+export function markOutOfRange(position_address, direction = null) {
   const state = load();
   const pos = state.positions[position_address];
   if (!pos) return;
   if (!pos.out_of_range_since) {
     pos.out_of_range_since = new Date().toISOString();
+    pos.out_of_range_direction = direction;
     save(state);
-    log("state", `Position ${position_address} marked out of range`);
+    log("state", `Position ${position_address} marked out of range (direction: ${direction || 'null'})`);
+  } else {
+    // Update direction if changed while OOR (optional)
+    if (pos.out_of_range_direction !== direction) {
+      pos.out_of_range_direction = direction;
+      save(state);
+      log("state", `Position ${position_address} OOR direction updated to ${direction}`);
+    }
   }
 }
 
 /**
- * Mark a position as back in range (clears OOR timestamp).
+ * Mark a position as back in range (clears OOR timestamp and direction).
  */
 export function markInRange(position_address) {
   const state = load();
@@ -140,6 +153,7 @@ export function markInRange(position_address) {
   if (!pos) return;
   if (pos.out_of_range_since) {
     pos.out_of_range_since = null;
+    pos.out_of_range_direction = null;
     save(state);
     log("state", `Position ${position_address} back in range`);
   }
@@ -307,6 +321,10 @@ export function registerExitSignal(position_address, signal, confirmTicks = 2) {
     pos.pending_exit_started_at = new Date().toISOString();
   }
 
+  // Note: trailing-TP's "reset peak on negative PnL instead of firing" behavior lives
+  // in updatePnlAndCheckExits (it simply stops emitting a TRAILING_TP signal once PnL
+  // goes negative, resetting peak_pnl_pct/trailing_active there) — so a signal reaching
+  // this generic confirmation path has already cleared that check on every confirming tick.
   const count = pos.pending_exit_count;
   const fire = count >= confirmTicks;
   if (fire) {
@@ -393,10 +411,15 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   // Update OOR state
   if (in_range === false && !pos.out_of_range_since) {
     pos.out_of_range_since = new Date().toISOString();
+    const { active_bin, lower_bin, upper_bin } = positionData;
+    if (active_bin != null && lower_bin != null && upper_bin != null) {
+      pos.out_of_range_direction = active_bin > upper_bin ? 'above' : 'below';
+    }
     changed = true;
-    log("state", `Position ${position_address} marked out of range`);
+    log("state", `Position ${position_address} marked out of range (direction: ${pos.out_of_range_direction ?? 'unknown'})`);
   } else if (in_range === true && pos.out_of_range_since) {
     pos.out_of_range_since = null;
+    pos.out_of_range_direction = null;
     changed = true;
     log("state", `Position ${position_address} back in range`);
   }
@@ -411,40 +434,93 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     };
   }
 
+  // ── Bin-utilization stop loss ──────────────────────────────────
+  // Fire when PnL underperforms what bin position alone would predict.
+  // Only triggers for downward bin movement (active_bin < deploy) since
+  // our range is asymmetric (more bins below than above).
+  // Uses stopLossPct as the baseline for full-bin-cross loss, and
+  // trailingDropPct as the tolerance buffer.
+  if (mgmtConfig.binUtilSlEnabled && !pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.stopLossPct != null) {
+    const binsBelow = pos.bin_range?.bins_below;
+    if (binsBelow && binsBelow > 0) {
+      const activeBinAtDeploy = pos.active_bin_at_deploy;
+      const currentActiveBin = positionData.active_bin;
+      if (activeBinAtDeploy != null && currentActiveBin != null && currentActiveBin < activeBinAtDeploy) {
+        const binsCrossed = activeBinAtDeploy - currentActiveBin;
+        const t = binsCrossed / binsBelow;
+        const isBidAsk = pos.strategy === "bid_ask";
+        // bid_ask: liquidity concentrated at edges, cumulative IL ~ t²
+        // spot/curve: uniform distribution, cumulative IL ~ t
+        const expectedPnl = isBidAsk
+          ? (t * t) * mgmtConfig.stopLossPct
+          : t * mgmtConfig.stopLossPct;
+        const tolerance = mgmtConfig.trailingDropPct ?? 0;
+        // Optional minimum-loss floor: bin-util SL cannot fire unless actual PnL
+        // is already below -binUtilSlMinPnl%. Prevents early noise cuts at small t
+        // where the t²-derived threshold is near zero (e.g. -1% on 5% bin cross).
+        const minPnlFloor = mgmtConfig.binUtilSlMinPnl;
+        const rawThreshold = expectedPnl - tolerance;
+        const threshold = (minPnlFloor > 0) ? Math.min(rawThreshold, -minPnlFloor) : rawThreshold;
+        if (currentPnlPct < threshold) {
+          return {
+            action: "STOP_LOSS",
+            reason: `Bin-util SL: PnL ${currentPnlPct.toFixed(2)}% < expected ${expectedPnl.toFixed(2)}% (${isBidAsk ? "bid_ask" : "spot"}, crossed ${binsCrossed}/${binsBelow} bins, tol ${tolerance}%)`,
+          };
+        }
+      }
+    }
+  }
+
   // ── Trailing TP ────────────────────────────────────────────────
   if (!pnl_pct_suspicious && pos.trailing_active) {
     const dropFromPeak = pos.peak_pnl_pct - currentPnlPct;
     if (dropFromPeak >= mgmtConfig.trailingDropPct) {
-      return {
-        action: "TRAILING_TP",
-        reason: `Trailing TP: peak ${pos.peak_pnl_pct.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${dropFromPeak.toFixed(2)}% >= ${mgmtConfig.trailingDropPct}%)`,
-        needs_confirmation: true,
-        peak_pnl_pct: pos.peak_pnl_pct,
-        current_pnl_pct: currentPnlPct,
-        drop_from_peak_pct: dropFromPeak,
-      };
+      if (currentPnlPct < 0) {
+        // Dropped through zero — reset so it must reach the trigger threshold again
+        const oldPeak = pos.peak_pnl_pct;
+        pos.peak_pnl_pct = 0;
+        pos.trailing_active = false;
+        save(state);
+        log("state", `Trailing TP reset for ${position_address}: peak ${oldPeak.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (negative), must re-trigger`);
+      } else {
+        return {
+          action: "TRAILING_TP",
+          reason: `Trailing TP: peak ${pos.peak_pnl_pct.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${dropFromPeak.toFixed(2)}% >= ${mgmtConfig.trailingDropPct}%)`,
+          needs_confirmation: true,
+          peak_pnl_pct: pos.peak_pnl_pct,
+          current_pnl_pct: currentPnlPct,
+          drop_from_peak_pct: dropFromPeak,
+        };
+      }
     }
   }
 
   // ── Out of range too long ──────────────────────────────────────
   if (pos.out_of_range_since) {
     const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
-    if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
+    // Use direction-specific wait minutes if configured, else fallback to generic
+    const waitMinutes = pos.out_of_range_direction === 'above'
+      ? mgmtConfig.outOfRangeWaitMinutesAbove
+      : pos.out_of_range_direction === 'below'
+        ? mgmtConfig.outOfRangeWaitMinutesBelow
+        : mgmtConfig.outOfRangeWaitMinutes;
+    if (minutesOOR >= waitMinutes) {
       return {
         action: "OUT_OF_RANGE",
-        reason: `Out of range for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
+        reason: `Out of range ${pos.out_of_range_direction || ''} for ${minutesOOR}m (limit: ${waitMinutes}m)`,
       };
     }
   }
 
   // ── Low yield (only after position has had time to accumulate fees) ───
-  const { age_minutes } = positionData;
+  const { age_minutes, pnl_pct } = positionData;
   const minAgeForYieldCheck = mgmtConfig.minAgeBeforeYieldCheck ?? 60;
   if (
     fee_per_tvl_24h != null &&
     mgmtConfig.minFeePerTvl24h != null &&
     fee_per_tvl_24h < mgmtConfig.minFeePerTvl24h &&
-    (age_minutes == null || age_minutes >= minAgeForYieldCheck)
+    (age_minutes == null || age_minutes >= minAgeForYieldCheck) &&
+    (pnl_pct ?? 0) > 0
   ) {
     return {
       action: "LOW_YIELD",

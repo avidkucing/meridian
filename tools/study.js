@@ -1,4 +1,6 @@
 import { config } from "../config.js";
+import { getTopCandidates } from "./screening.js";
+import { addSmartWallet, listSmartWallets } from "../smart-wallets.js";
 
 const AGENT_MERIDIAN_API = config.api.url;
 const AGENT_MERIDIAN_PUBLIC_KEY =
@@ -156,4 +158,51 @@ function isNum(value) {
 function fmtPct(value) {
   const n = Number(value || 0);
   return `${n >= 0 ? "+" : ""}${round(n, 2)}%`;
+}
+
+async function parallelMap(items, concurrency, fn) {
+  const results = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    results.push(...(await Promise.all(batch.map(fn))));
+  }
+  return results;
+}
+
+export async function addTopLPersFromCandidates({ limit = 10, lperLimit = 4, concurrency = 3 } = {}) {
+  const seen = new Set();
+
+  const { candidates } = await getTopCandidates({ limit });
+
+  const { wallets: existing } = listSmartWallets();
+  existing.forEach(w => seen.add(w.address.toLowerCase()));
+
+  const poolAddresses = candidates.map(c => c.pool);
+  const studyResults = await parallelMap(poolAddresses, concurrency, addr =>
+    studyTopLPers({ pool_address: addr, limit: lperLimit }).catch(() => null)
+  );
+
+  const lperMap = new Map();
+  for (const result of studyResults) {
+    if (!result?.lpers) continue;
+    for (const lper of result.lpers) {
+      const addr = lper.owner?.toLowerCase();
+      if (!addr || seen.has(addr)) continue;
+      seen.add(addr);
+      lperMap.set(addr, lper);
+    }
+  }
+
+  const added = [];
+  const skipped = [];
+  for (const [, lper] of lperMap) {
+    const name = lper.summary?.preferred_strategy
+      ? `${lper.summary.preferred_strategy}__${lper.owner_short}`
+      : lper.owner_short;
+    const result = addSmartWallet({ name, address: lper.owner, category: "alpha", type: "lp" });
+    if (result.success) added.push({ name, address: lper.owner });
+    else skipped.push({ address: lper.owner, reason: result.error });
+  }
+
+  return { added, skipped, totalCandidates: candidates.length, totalLPersFound: lperMap.size };
 }

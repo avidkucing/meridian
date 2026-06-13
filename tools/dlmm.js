@@ -1,4 +1,5 @@
 import {
+  ComputeBudgetProgram,
   Connection,
   Keypair,
   PublicKey,
@@ -12,6 +13,7 @@ import {
 import BN from "bn.js";
 import bs58 from "bs58";
 import { config, computeDeployAmount, MIN_SAFE_BINS_BELOW } from "../config.js";
+import { fetchChartIndicatorsForMint, confirmIndicatorPreset } from "./chart-indicators.js";
 import { log } from "../logger.js";
 import {
   trackPosition,
@@ -25,7 +27,7 @@ import {
 } from "../state.js";
 import { recordPerformance } from "../lessons.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
-import { normalizeMint } from "./wallet.js";
+import { normalizeMint, swapToken } from "./wallet.js";
 import { appendDecision } from "../decision-log.js";
 import { getAndClearStagedSignals } from "../signal-tracker.js";
 import { computePositions, fetchDlmmPnlForPool } from "./pnl.js";
@@ -115,6 +117,10 @@ function shouldUseLpAgentRelay() {
 
 function shouldUseLpAgentRelayForDeploy() {
   return false;
+}
+
+function shouldUseLpAgentRelayForClose() {
+  return false; // relay zap-out consistently embeds SOL transfers that trip the safety check
 }
 
 async function meridianJson(pathname, options = {}) {
@@ -405,19 +411,25 @@ function formatSolFee(value) {
   return Number.isFinite(number) ? number.toFixed(8).replace(/0+$/, "").replace(/\.$/, "") : "unknown";
 }
 
-async function assertRangeDoesNotRequireBinArrayInitialization(pool, minBinId, maxBinId) {
+// Instead of asserting, clamp the requested range to only cover initialized bin arrays.
+// Scans from the active bin outward; shrinks each side to the last initialized bin array.
+// Returns { minBinId, maxBinId, clamped } — if clamped=true the caller must recalculate
+// activeBinsBelow/activeBinsAbove from the new IDs.
+async function clampRangeToInitializedBinArrays(pool, minBinId, maxBinId, activeBinId) {
   const {
     getBinArrayKeysCoverage,
     getBinArrayIndexesCoverage,
     deriveBinArrayBitmapExtension,
     isOverflowDefaultBinArrayBitmap,
-    BIN_ARRAY_FEE,
     BIN_ARRAY_BITMAP_FEE,
   } = await getDLMM();
 
   if (!getBinArrayKeysCoverage || !getBinArrayIndexesCoverage) {
-    throw new Error("Cannot verify Meteora bin-array initialization risk; refusing deploy.");
+    throw new Error("Cannot verify Meteora bin-array initialization; refusing deploy.");
   }
+
+  // Meteora DLMM: each bin array covers exactly 70 consecutive bins.
+  const BIN_ARRAY_SIZE = 70;
 
   const programId = getDlmmProgramId();
   const poolPubkey = new PublicKey(pool.pubkey?.toString?.() || pool.lbPair?.publicKey?.toString?.() || pool.lbPair?.pubkey?.toString?.());
@@ -426,23 +438,8 @@ async function assertRangeDoesNotRequireBinArrayInitialization(pool, minBinId, m
   const indexes = getBinArrayIndexesCoverage(lower, upper);
   const keys = getBinArrayKeysCoverage(lower, upper, poolPubkey, programId);
   const accounts = await getConnection().getMultipleAccountsInfo(keys, "confirmed");
-  const missing = accounts
-    .map((account, index) => account ? null : {
-      index: indexes[index]?.toString?.() ?? String(index),
-      address: keys[index].toString(),
-    })
-    .filter(Boolean);
 
-  if (missing.length > 0) {
-    const totalFee = missing.length * Number(BIN_ARRAY_FEE ?? 0.07143744);
-    const sample = missing.slice(0, 3).map((entry) => `${entry.index}:${entry.address.slice(0, 8)}`).join(", ");
-    throw new Error(
-      `Deploy skipped: selected range requires ${missing.length} missing Meteora bin-array initialization(s) ` +
-      `(~${formatSolFee(totalFee)} SOL non-refundable pool rent; ${formatSolFee(BIN_ARRAY_FEE ?? 0.07143744)} SOL each). ` +
-      `Missing indexes: ${sample}${missing.length > 3 ? ", ..." : ""}. Pick an already-initialized range/pool.`,
-    );
-  }
-
+  // Bitmap extension check remains a hard error — it requires a separate account init.
   if (deriveBinArrayBitmapExtension && isOverflowDefaultBinArrayBitmap) {
     const needsBitmapExtension = indexes.some((index) => isOverflowDefaultBinArrayBitmap(index));
     if (needsBitmapExtension) {
@@ -456,6 +453,66 @@ async function assertRangeDoesNotRequireBinArrayInitialization(pool, minBinId, m
       }
     }
   }
+
+  // Build sorted list of bin arrays with initialization status.
+  const arrayInfos = indexes
+    .map((idx, i) => ({ index: Number(idx.toString()), initialized: accounts[i] !== null }))
+    .sort((a, b) => a.index - b.index);
+
+  const missingCount = arrayInfos.filter((a) => !a.initialized).length;
+  if (missingCount === 0) {
+    return { minBinId, maxBinId, clamped: false };
+  }
+
+  const activeBinArrayIndex = Math.floor(activeBinId / BIN_ARRAY_SIZE);
+  const activeBinArrayPos = arrayInfos.findIndex((a) => a.index === activeBinArrayIndex);
+
+  // Active bin's own array must be initialized — if not, the pool itself is broken.
+  if (activeBinArrayPos >= 0 && !arrayInfos[activeBinArrayPos].initialized) {
+    throw new Error(`Deploy skipped: the active bin's bin array (index ${activeBinArrayIndex}) is uninitialized. Pool may be invalid.`);
+  }
+
+  // Scan lower side (inner → outer): stop at first uninitialized array.
+  let newMinBinId = minBinId;
+  const lowerStart = activeBinArrayPos >= 0 ? activeBinArrayPos - 1 : arrayInfos.length - 1;
+  for (let i = lowerStart; i >= 0; i--) {
+    if (!arrayInfos[i].initialized) {
+      // Clamp above this missing array: first bin of the next (initialized) array.
+      newMinBinId = (arrayInfos[i].index + 1) * BIN_ARRAY_SIZE;
+      break;
+    }
+  }
+
+  // Scan upper side (inner → outer): stop at first uninitialized array.
+  let newMaxBinId = maxBinId;
+  const upperStart = activeBinArrayPos >= 0 ? activeBinArrayPos + 1 : 0;
+  for (let i = upperStart; i < arrayInfos.length; i++) {
+    if (!arrayInfos[i].initialized) {
+      // Clamp below this missing array: last bin of the previous (initialized) array.
+      newMaxBinId = arrayInfos[i].index * BIN_ARRAY_SIZE - 1;
+      break;
+    }
+  }
+
+  const originalBinsBelow = activeBinId - minBinId;
+  const originalBinsAbove = maxBinId - activeBinId;
+  const newBinsBelow = activeBinId - newMinBinId;
+  const newBinsAbove = newMaxBinId - activeBinId;
+
+  if (newMinBinId > activeBinId || newMaxBinId < activeBinId) {
+    throw new Error(
+      `Deploy skipped: no initialized bin arrays available in the requested range around active bin ${activeBinId}.`,
+    );
+  }
+
+  log(
+    "deploy",
+    `Range clamped to initialized bin arrays — ` +
+    `bins_below ${originalBinsBelow}→${newBinsBelow}, bins_above ${originalBinsAbove}→${newBinsAbove} ` +
+    `(${missingCount} missing bin array(s) trimmed from edges)`,
+  );
+
+  return { minBinId: newMinBinId, maxBinId: newMaxBinId, clamped: true };
 }
 
 function assertNoInitializeBinArrayInstructions(serializedTxs) {
@@ -560,6 +617,42 @@ export async function getActiveBin({ pool_address }) {
   };
 }
 
+function _extractIndicatorFields(payload, suffix) {
+  if (!payload?.latest) return {};
+  const n = (v) => (v != null && Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) / 100 : null);
+  const latest = payload.latest;
+  return {
+    [`rsi_${suffix}`]:        n(latest.rsi?.value),
+    [`st_dir_${suffix}`]:     latest.supertrend?.direction ?? null,
+    [`st_val_${suffix}`]:     n(latest.supertrend?.value),
+    [`bb_upper_${suffix}`]:   n(latest.bollinger?.upper),
+    [`bb_mid_${suffix}`]:     n(latest.bollinger?.middle),
+    [`bb_lower_${suffix}`]:   n(latest.bollinger?.lower),
+  };
+}
+
+async function fetchIndicatorSnapshot(mint, prefix = "") {
+  const nullResult = {
+    [`${prefix}rsi_5m`]: null, [`${prefix}rsi_15m`]: null,
+    [`${prefix}st_dir_5m`]: null, [`${prefix}st_dir_15m`]: null,
+    [`${prefix}st_val_5m`]: null, [`${prefix}st_val_15m`]: null,
+    [`${prefix}bb_upper_5m`]: null, [`${prefix}bb_mid_5m`]: null, [`${prefix}bb_lower_5m`]: null,
+    [`${prefix}bb_upper_15m`]: null, [`${prefix}bb_mid_15m`]: null, [`${prefix}bb_lower_15m`]: null,
+  };
+  if (!mint) return nullResult;
+  try {
+    const [p5, p15] = await Promise.all([
+      fetchChartIndicatorsForMint(mint, { interval: "5_MINUTE" }).catch(() => null),
+      fetchChartIndicatorsForMint(mint, { interval: "15_MINUTE" }).catch(() => null),
+    ]);
+    const f5  = _extractIndicatorFields(p5,  `${prefix}5m`);
+    const f15 = _extractIndicatorFields(p15, `${prefix}15m`);
+    return { ...f5, ...f15 };
+  } catch {
+    return nullResult;
+  }
+}
+
 // ─── Deploy Position ───────────────────────────────────────────
 export async function deployPosition({
   pool_address,
@@ -578,6 +671,7 @@ export async function deployPosition({
   volatility,
   fee_tvl_ratio,
   organic_score,
+  price_vs_ath_pct,
   initial_value_usd,
   // entry market conditions (injected by executor safety checks)
   entry_mcap,
@@ -587,14 +681,24 @@ export async function deployPosition({
 }) {
   pool_address = normalizeMint(pool_address);
   const activeStrategy = strategy || config.strategy.strategy;
-  let activeBinsBelow = bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow;
+  // downside_pct / upside_pct are the primary range inputs. bins_below / bins_above are
+  // accepted for manual/legacy calls but cannot override configured pct defaults.
+  let activeBinsBelow = bins_below ?? MIN_SAFE_BINS_BELOW; // placeholder; overridden by pct block below
   let activeBinsAbove = bins_above ?? 0;
+  // Always apply the configured pct defaults unless a pct was explicitly passed.
+  // bins_below/bins_above are ignored in favour of the config when downside/upside_pct is unset.
+  if (downside_pct == null) {
+    downside_pct = config.strategy.defaultDownsidePct ?? 60;
+  }
+  if (upside_pct == null) {
+    upside_pct = config.strategy.defaultUpsidePct ?? 0;
+  }
   const parsedVolatility = volatility == null ? null : Number(volatility);
   const normalizedVolatility = parsedVolatility != null && Number.isFinite(parsedVolatility) ? parsedVolatility : null;
 
-  if (volatility != null && (normalizedVolatility == null || normalizedVolatility <= 0)) {
-    throw new Error(`Invalid volatility ${volatility} — refusing deploy because the volatility feed is unusable.`);
-  }
+  // if (volatility != null && (normalizedVolatility == null || normalizedVolatility <= 0)) {
+  //   throw new Error(`Invalid volatility ${volatility} — refusing deploy because the volatility feed is unusable.`);
+  // }
 
   if (isPoolOnCooldown(pool_address)) {
     log("deploy", `Pool ${pool_address.slice(0, 8)} is on cooldown — skipping`);
@@ -608,6 +712,42 @@ export async function deployPosition({
     log("deploy", `Base mint ${baseMint.slice(0, 8)} is on cooldown — skipping deploy for pool ${pool_address.slice(0, 8)}`);
     return { success: false, error: "Token on cooldown — recently closed out-of-range too many times. Try a different token." };
   }
+
+  // Authoritative duplicate-token guard using the on-chain derived baseMint.
+  // The LLM frequently passes pool_address as base_mint arg, making the executor.js
+  // pre-check unreliable. This check uses the real mint from the pool object.
+  // Duplicate-token check: block deploying to the same base token twice
+  if (!config.risk.allowMultiplePositionsPerToken) {
+    const livePositions = await getMyPositions({ force: true, silent: true });
+    const alreadyHasMint = (livePositions?.positions ?? []).some((p) => p.base_mint === baseMint);
+    if (alreadyHasMint) {
+      log("deploy", `Duplicate token blocked: ${baseMint.slice(0, 8)} already held in an open position`);
+      return { success: false, error: `Already holding token ${baseMint.slice(0, 8)} in an open position.` };
+    }
+  }
+
+  // Indicator pre-check using the real on-chain baseMint — runs here (not executor.js)
+  // so the mint is always authoritative, never confused with the pool address by the LLM.
+  if (config.indicators?.enabled) {
+    try {
+      const confirmation = await confirmIndicatorPreset({
+        mint: baseMint,
+        side: "entry",
+        refresh: true,
+        enabled: true,
+        preset: config.indicators.entryPreset,
+        intervals: config.indicators.intervals,
+        requireAllIntervals: config.indicators.requireAllIntervals ?? false,
+      });
+      if (confirmation.enabled && !confirmation.confirmed && !confirmation.skipped) {
+        log("deploy", `Indicator pre-check blocked deploy for ${baseMint.slice(0, 8)}: ${confirmation.reason}`);
+        return { success: false, error: `Indicator check failed: ${confirmation.reason}` };
+      }
+    } catch (e) {
+      log("deploy", `Indicator pre-check failed (non-blocking): ${e.message}`);
+    }
+  }
+
   const activeBin = await pool.getActiveBin();
   const actualBinStep = pool.lbPair.binStep;
   const activePrice = Number(getPriceOfBinByBinId(activeBin.binId, actualBinStep).toString());
@@ -626,10 +766,16 @@ export async function deployPosition({
     const lowerTargetPrice = activePrice * (1 - downsidePct / 100);
     const upperTargetPrice = activePrice * (1 + upsidePct / 100);
     const lowerBinId = getBinIdFromPrice(lowerTargetPrice, actualBinStep, true);
-    const upperBinId = getBinIdFromPrice(upperTargetPrice, actualBinStep, false);
-
     activeBinsBelow = Math.max(0, activeBin.binId - lowerBinId);
-    activeBinsAbove = Math.max(0, upperBinId - activeBin.binId);
+    // Short-circuit: upside_pct=0 must always produce bins_above=0.
+    // getBinIdFromPrice(activePrice, binStep, false) can round to activeBinId+1
+    // due to bin-boundary math, causing a spurious pre-deploy swap.
+    if (upsidePct === 0) {
+      activeBinsAbove = 0;
+    } else {
+      const upperBinId = getBinIdFromPrice(upperTargetPrice, actualBinStep, false);
+      activeBinsAbove = Math.max(0, upperBinId - activeBin.binId);
+    }
   }
 
   // Calculate amounts
@@ -644,20 +790,13 @@ export async function deployPosition({
     throw new Error("Invalid deploy amount: amount_x and amount_y must be valid non-negative numbers.");
   }
   if (finalAmountX > 0) {
-    throw new Error("Unsupported deploy amount: this agent only supports single-side SOL deploys. Use amount_y/amount_sol and keep amount_x=0.");
+    throw new Error("Unsupported deploy amount: pass amount_y (SOL) only — amount_x is auto-calculated from bins_above.");
   }
   if (finalAmountY <= 0) {
     throw new Error("Invalid deploy amount: provide a positive amount_y/amount_sol.");
   }
-  const isSingleSidedSol = finalAmountX <= 0 && finalAmountY > 0;
-  if (isSingleSidedSol && (Number(bins_above ?? 0) > 0 || Number(upside_pct ?? 0) > 0)) {
-    throw new Error(
-      "Single-side SOL deploy cannot use bins_above or upside_pct. Use amount_y with bins_below only; the upper bin is the SDK active bin.",
-    );
-  }
-  if (isSingleSidedSol) {
-    activeBinsAbove = 0;
-  }
+  // isSingleSidedSol: true only when no bins above (no token X side needed)
+  const isSingleSidedSol = finalAmountX <= 0 && finalAmountY > 0 && activeBinsAbove === 0;
   activeBinsBelow = Number(activeBinsBelow);
   activeBinsAbove = Number(activeBinsAbove);
   if (!Number.isFinite(activeBinsBelow) || !Number.isFinite(activeBinsAbove)) {
@@ -669,8 +808,8 @@ export async function deployPosition({
   if (!Number.isInteger(activeBinsBelow) || !Number.isInteger(activeBinsAbove)) {
     throw new Error("Invalid bin range: bins_below and bins_above must be whole-bin integers.");
   }
-  const minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Number(config.strategy.minBinsBelow ?? MIN_SAFE_BINS_BELOW));
-  const totalBins = activeBinsBelow + activeBinsAbove;
+  const minBinsBelow = MIN_SAFE_BINS_BELOW;
+  let totalBins = activeBinsBelow + activeBinsAbove;
   if (totalBins < minBinsBelow) {
     throw new Error(
       `Invalid deploy range: total bins ${totalBins} is below minimum ${minBinsBelow}. Refusing 1-bin/tiny-range deploy.`,
@@ -706,20 +845,25 @@ export async function deployPosition({
     };
   }
 
-  const isWideRange = totalBins > 69;
-  const minBinId = activeBin.binId - activeBinsBelow;
-  const maxBinId = isSingleSidedSol ? activeBin.binId : activeBin.binId + activeBinsAbove;
+  let isWideRange = totalBins > 69;
+  let minBinId = activeBin.binId - activeBinsBelow;
+  let maxBinId = activeBin.binId + activeBinsAbove;
 
   if (minBinId > maxBinId) {
     throw new Error(`Invalid bin range: ${minBinId} -> ${maxBinId}`);
   }
-  if (isSingleSidedSol && maxBinId !== activeBin.binId) {
-    throw new Error(
-      `Single-side SOL deploy must end at the SDK active bin. Expected ${activeBin.binId}, got ${maxBinId}.`,
-    );
-  }
 
-  await assertRangeDoesNotRequireBinArrayInitialization(pool, minBinId, maxBinId);
+  // Clamp range to initialized bin arrays instead of hard-failing.
+  // If outer bin arrays are uninitialized, shrinks from each edge to the nearest initialized one.
+  const clampResult = await clampRangeToInitializedBinArrays(pool, minBinId, maxBinId, activeBin.binId);
+  if (clampResult.clamped) {
+    minBinId = clampResult.minBinId;
+    maxBinId = clampResult.maxBinId;
+    activeBinsBelow = activeBin.binId - minBinId;
+    activeBinsAbove = maxBinId - activeBin.binId;
+    totalBins = activeBinsBelow + activeBinsAbove;
+    isWideRange = totalBins > 69;
+  }
 
   const minPrice = Number(getPriceOfBinByBinId(minBinId, actualBinStep).toString());
   const maxPrice = Number(getPriceOfBinByBinId(maxBinId, actualBinStep).toString());
@@ -731,15 +875,48 @@ export async function deployPosition({
   const baseFactor = pool.lbPair.parameters?.baseFactor ?? 0;
   const actualBaseFee = base_fee ?? (baseFactor > 0 ? parseFloat((baseFactor * actualBinStep / 1e6 * 100).toFixed(4)) : null);
 
-  const totalYLamports = new BN(Math.floor(finalAmountY * 1e9));
-  // For X, we assume it's also 9 decimals for now, or we'd need to fetch mint decimals.
-  // Most Meteora pools base tokens are 6 or 9. To be safe, we should fetch.
+  // For bins_above > 0, we need token X for the upper bins.
+  // Relay path: pass percentX and let the relay swap internally.
+  // Non-relay path: pre-swap SOL → base token before deploying.
+  const percentX = activeBinsAbove > 0 ? activeBinsAbove / totalBins : 0;
+  // solForX: fraction of the deploy amount to convert to token X.
+  // We swap 10% MORE than the strategy needs (×1.10) so the wallet retains a 10% surplus
+  // over what we tell the SDK to deploy. The SDK sets its on-chain ceiling to
+  // maxDepositXAmount = sdkXInput × 1.10; by passing (received / 1.10) to the SDK,
+  // that ceiling equals exactly what the wallet holds — preventing TransferChecked failures
+  // when the active bin drifts slightly between TX build and execution.
+  const solForX = activeBinsAbove > 0 ? finalAmountY * percentX * 1.10 : 0;
+  // effectiveAmountY: SOL remaining for the lower bins after the X portion is reserved
+  const effectiveAmountY = finalAmountY - solForX;
+
   let totalXLamports = new BN(0);
-  if (finalAmountX > 0) {
+  if (!shouldUseLpAgentRelayForDeploy() && activeBinsAbove > 0) {
+    const baseMintAddress = pool.lbPair.tokenXMint.toString();
+    log("deploy", `bins_above=${activeBinsAbove}: swapping ${solForX.toFixed(4)} SOL → base token before deploy`);
+    const swapResult = await swapToken({
+      input_mint: "So11111111111111111111111111111111111111112", // SOL
+      output_mint: baseMintAddress,
+      amount: solForX,
+    });
+    if (!swapResult.success) {
+      throw new Error(`Pre-deploy swap SOL→base token failed: ${swapResult.error}`);
+    }
+    // swapToken returns amount_out in raw token units.
+    // We pass (received × 10/11) ≈ received/1.10 to the SDK so that the SDK's on-chain ceiling
+    // (maxDepositXAmount = sdkInput × 1.10) equals exactly what the wallet holds.
+    // The remaining ~9% stays in the wallet as the slippage buffer and is auto-swapped back
+    // to SOL after the position closes.
+    const xReceived = BigInt(String(swapResult.amount_out));
+    const xToPassSDK = xReceived * 10n / 11n; // floor(received / 1.10)
+    totalXLamports = new BN(String(xToPassSDK));
+    log("deploy", `Pre-deploy swap succeeded: received ${swapResult.amount_out} raw base token units (passing ${xToPassSDK} to SDK)`);
+  } else if (finalAmountX > 0) {
     const mintInfo = await getConnection().getParsedAccountInfo(new PublicKey(pool.lbPair.tokenXMint));
     const decimals = mintInfo.value?.data?.parsed?.info?.decimals ?? 9;
     totalXLamports = new BN(Math.floor(finalAmountX * Math.pow(10, decimals)));
   }
+
+  const totalYLamports = new BN(Math.floor(effectiveAmountY * 1e9));
 
   if (shouldUseLpAgentRelayForDeploy()) {
     try {
@@ -758,9 +935,9 @@ export async function deployPosition({
           owner: wallet.publicKey.toString(),
           strategy: activeStrategy === "spot" ? "Spot" : "BidAsk",
           inputSOL: finalAmountY,
-          amountY: finalAmountY,
-          amountX: finalAmountX,
-          percentX: finalAmountX > 0 && finalAmountY > 0 ? 0.5 : 0,
+          amountY: activeBinsAbove > 0 ? effectiveAmountY : finalAmountY,
+          amountX: activeBinsAbove > 0 ? solForX : finalAmountX,
+          percentX: percentX > 0 ? percentX : (finalAmountX > 0 && finalAmountY > 0 ? 0.5 : 0),
           fromBinId: minBinId,
           toBinId: maxBinId,
           slippageBps: 500,
@@ -806,6 +983,8 @@ export async function deployPosition({
         const signalSnapshot = config.darwin?.enabled
           ? getAndClearStagedSignals(pool_address, baseMint)
           : null;
+        const athPct = price_vs_ath_pct != null ? price_vs_ath_pct : (signalSnapshot?.price_vs_ath_pct ?? null);
+        const entryRsi = await fetchIndicatorSnapshot(baseMint);
         trackPosition({
           position: positionAddress,
           pool: pool_address,
@@ -816,11 +995,12 @@ export async function deployPosition({
           volatility: normalizedVolatility,
           fee_tvl_ratio,
           organic_score,
+          price_vs_ath_pct: athPct,
           amount_sol: finalAmountY,
           amount_x: finalAmountX,
           active_bin: activeBin.binId,
           initial_value_usd,
-          signal_snapshot: signalSnapshot,
+          signal_snapshot: { ...(signalSnapshot || {}), price_vs_ath_pct: athPct, ...entryRsi },
           entry_mcap,
           entry_tvl,
           entry_volume,
@@ -879,6 +1059,7 @@ export async function deployPosition({
       return { success: false, error: error.message };
     }
   }
+
 
   const wallet = getWallet();
   const newPosition = Keypair.generate();
@@ -948,6 +1129,8 @@ export async function deployPosition({
     const signalSnapshot = config.darwin?.enabled
       ? getAndClearStagedSignals(pool_address, baseMint)
       : null;
+    const athPct = price_vs_ath_pct != null ? price_vs_ath_pct : (signalSnapshot?.price_vs_ath_pct ?? null);
+    const entryRsi = await fetchIndicatorSnapshot(baseMint);
     trackPosition({
       position: newPosition.publicKey.toString(),
       pool: pool_address,
@@ -958,11 +1141,12 @@ export async function deployPosition({
       volatility: normalizedVolatility,
       fee_tvl_ratio,
       organic_score,
+      price_vs_ath_pct: athPct,
       amount_sol: finalAmountY,
       amount_x: finalAmountX,
       active_bin: activeBin.binId,
       initial_value_usd,
-      signal_snapshot: signalSnapshot,
+      signal_snapshot: { ...(signalSnapshot || {}), price_vs_ath_pct: athPct, ...entryRsi },
       entry_mcap,
       entry_tvl,
       entry_volume,
@@ -1148,6 +1332,18 @@ const PERFORMANCE_SIGNAL_FIELDS = [
   "study_win_rate",
   "hive_consensus",
   "volatility",
+  // entry indicators
+  "rsi_5m", "rsi_15m",
+  "st_dir_5m", "st_dir_15m",
+  "st_val_5m", "st_val_15m",
+  "bb_upper_5m", "bb_mid_5m", "bb_lower_5m",
+  "bb_upper_15m", "bb_mid_15m", "bb_lower_15m",
+  // exit indicators
+  "exit_rsi_5m", "exit_rsi_15m",
+  "exit_st_dir_5m", "exit_st_dir_15m",
+  "exit_st_val_5m", "exit_st_val_15m",
+  "exit_bb_upper_5m", "exit_bb_mid_5m", "exit_bb_lower_5m",
+  "exit_bb_upper_15m", "exit_bb_mid_15m", "exit_bb_lower_15m",
 ];
 
 function resolvePerformanceSignalSnapshot({ poolAddress, baseMint, tracked }) {
@@ -1170,21 +1366,44 @@ function resolvePerformanceSignalSnapshot({ poolAddress, baseMint, tracked }) {
 }
 
 function getClosedPnlValue(posEntry, solMode = false) {
-  return solMode
-    ? maybeNum(posEntry?.pnlSol) ?? maybeNum(posEntry?.pnl?.valueNative) ?? 0
-    : maybeNum(posEntry?.pnlUsd) ?? maybeNum(posEntry?.pnl?.value) ?? 0;
+  if (solMode) {
+    // Prefer computing SOL PnL from on-chain deposit/withdrawal/fee data.
+    // The API's pnlSol field is derived from USD/solPrice and is inaccurate
+    // (e.g. when the token X side crashes in USD terms between deposit and close).
+    const depositSol     = maybeNum(posEntry?.allTimeDeposits?.total?.sol);
+    const withdrawalSol  = maybeNum(posEntry?.allTimeWithdrawals?.total?.sol);
+    const feesSol        = maybeNum(posEntry?.allTimeFees?.total?.sol);
+    if (depositSol != null && depositSol > 0 && withdrawalSol != null) {
+      return (withdrawalSol + (feesSol ?? 0)) - depositSol;
+    }
+    return maybeNum(posEntry?.pnlSol) ?? maybeNum(posEntry?.pnl?.valueNative) ?? 0;
+  }
+  return maybeNum(posEntry?.pnlUsd) ?? maybeNum(posEntry?.pnl?.value) ?? 0;
 }
 
 function getClosedPnlPct(posEntry, solMode = false) {
-  const reported = solMode
-    ? maybeNum(posEntry?.pnlSolPctChange) ?? maybeNum(posEntry?.pnl?.percentNative)
-    : maybeNum(posEntry?.pnlPctChange) ?? maybeNum(posEntry?.pnl?.percent);
-  if (reported != null) return reported;
+  if (solMode) {
+    // Use true on-chain SOL flows for the percentage — avoids the API's pnlSolPctChange
+    // which is pnlUsd / solPrice and gives wildly wrong results when token X drops in USD.
+    const depositSol     = maybeNum(posEntry?.allTimeDeposits?.total?.sol);
+    const withdrawalSol  = maybeNum(posEntry?.allTimeWithdrawals?.total?.sol);
+    const feesSol        = maybeNum(posEntry?.allTimeFees?.total?.sol);
+    if (depositSol != null && depositSol > 0 && withdrawalSol != null) {
+      const pnlSol = (withdrawalSol + (feesSol ?? 0)) - depositSol;
+      return (pnlSol / depositSol) * 100;
+    }
+    // Fall back to API-reported percentages only if on-chain data unavailable.
+    const reported = maybeNum(posEntry?.pnlSolPctChange) ?? maybeNum(posEntry?.pnl?.percentNative);
+    if (reported != null) return reported;
+    const pnl     = maybeNum(posEntry?.pnlSol) ?? maybeNum(posEntry?.pnl?.valueNative) ?? 0;
+    const deposit = maybeNum(posEntry?.allTimeDeposits?.total?.sol);
+    return deposit && deposit > 0 ? (pnl / deposit) * 100 : 0;
+  }
 
-  const pnl = getClosedPnlValue(posEntry, solMode);
-  const deposit = solMode
-    ? maybeNum(posEntry?.allTimeDeposits?.total?.sol)
-    : maybeNum(posEntry?.allTimeDeposits?.total?.usd);
+  const reported = maybeNum(posEntry?.pnlPctChange) ?? maybeNum(posEntry?.pnl?.percent);
+  if (reported != null) return reported;
+  const pnl     = maybeNum(posEntry?.pnlUsd) ?? maybeNum(posEntry?.pnl?.value) ?? 0;
+  const deposit = maybeNum(posEntry?.allTimeDeposits?.total?.usd);
   return deposit && deposit > 0 ? (pnl / deposit) * 100 : 0;
 }
 
@@ -1313,9 +1532,6 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
         const tracked = getTrackedPosition(positionAddress);
         const isOOR = pool.outOfRange || pool.positionsOutOfRange?.includes(positionAddress);
 
-        if (isOOR) markOutOfRange(positionAddress);
-        else markInRange(positionAddress);
-
         // Bin data: from supplemental PnL call (OOR) or tracked state (in-range)
         const binData = binDataByPool[pool.poolAddress]?.[positionAddress];
         if (!binData) {
@@ -1324,6 +1540,15 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
         const lowerBin  = binData?.lowerBinId      ?? tracked?.bin_range?.min ?? null;
         const upperBin  = binData?.upperBinId      ?? tracked?.bin_range?.max ?? null;
         const activeBin = binData?.poolActiveBinId ?? tracked?.bin_range?.active ?? null;
+
+        if (isOOR) {
+          const oorDirection = activeBin != null && lowerBin != null && upperBin != null
+            ? activeBin > upperBin ? 'above' : 'below'
+            : null;
+          markOutOfRange(positionAddress, oorDirection);
+        } else {
+          markInRange(positionAddress);
+        }
         const lpData = lpAgentByPosition[positionAddress] || null;
 
         const ageFromState = tracked?.deployed_at
@@ -1440,6 +1665,7 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
           age_minutes:        binData?.createdAt ? Math.floor((Date.now() - binData.createdAt * 1000) / 60000) : ageFromState,
           minutes_out_of_range: minutesOutOfRange(positionAddress),
           instruction:        tracked?.instruction ?? null,
+          slot:               tracked?.slot ?? "main",
         });
       }
     }
@@ -1621,7 +1847,7 @@ export async function closePosition({ position_address, reason }) {
     const wallet = getWallet();
     const poolAddress = await lookupPoolForPosition(position_address, wallet.publicKey.toString());
     const poolMeta = await getPoolMetadata(poolAddress);
-    if (shouldUseLpAgentRelay()) {
+    if (shouldUseLpAgentRelayForClose()) {
       let relaySubmitted = false;
       try {
         const pool = await getPool(poolAddress);
@@ -1766,6 +1992,8 @@ export async function closePosition({ position_address, reason }) {
             baseMint: closeBaseMint,
             tracked,
           });
+          const exitIndicators = await fetchIndicatorSnapshot(closeBaseMint, "exit_");
+          const snapshotWithExit = { ...(signalSnapshot || {}), ...exitIndicators };
 
           let exitMarket = {};
           try {
@@ -1798,7 +2026,7 @@ export async function closePosition({ position_address, reason }) {
             minutes_in_range: minutesHeld - minutesOOR,
             minutes_held: minutesHeld,
             close_reason: reason || "agent decision",
-            signal_snapshot: signalSnapshot,
+            signal_snapshot: snapshotWithExit,
             entry_mcap: tracked.entry_mcap ?? null,
             entry_tvl: tracked.entry_tvl ?? null,
             entry_volume: tracked.entry_volume ?? null,
@@ -2008,7 +2236,13 @@ export async function closePosition({ position_address, reason }) {
                 finalValueUsd = nextFinalValueUsd;
                 initialUsd    = nextInitialUsd;
                 feesUsd       = nextFeesUsd;
-                log("close", `Closed PnL from API: pnl=${pnlUsd.toFixed(2)} ${config.management.solMode ? "SOL" : "USD"} (${pnlPct.toFixed(2)}%), withdrawn=${finalValueUsd.toFixed(2)} USD, deposited=${initialUsd.toFixed(2)} USD`);
+                const depositSolDbg    = posEntry?.allTimeDeposits?.total?.sol;
+                const withdrawalSolDbg = posEntry?.allTimeWithdrawals?.total?.sol;
+                const feesSolDbg       = posEntry?.allTimeFees?.total?.sol;
+                const solDebug = config.management.solMode && depositSolDbg != null
+                  ? ` | sol_in=${Number(depositSolDbg).toFixed(4)} sol_out=${Number(withdrawalSolDbg ?? 0).toFixed(4)} fees_sol=${Number(feesSolDbg ?? 0).toFixed(4)}`
+                  : "";
+                log("close", `Closed PnL from API: pnl=${pnlUsd.toFixed(4)} ${config.management.solMode ? "SOL" : "USD"} (${pnlPct.toFixed(2)}%), withdrawn=${finalValueUsd.toFixed(2)} USD, deposited=${initialUsd.toFixed(2)} USD${solDebug}`);
                 break;
               }
             } else {
@@ -2047,6 +2281,8 @@ export async function closePosition({ position_address, reason }) {
         baseMint: closeBaseMint,
         tracked,
       });
+      const exitIndicators = await fetchIndicatorSnapshot(closeBaseMint, "exit_");
+      const snapshotWithExit = { ...(signalSnapshot || {}), ...exitIndicators };
 
       let exitMarket = {};
       try {
@@ -2079,7 +2315,7 @@ export async function closePosition({ position_address, reason }) {
         minutes_in_range: minutesHeld - minutesOOR,
         minutes_held: minutesHeld,
         close_reason: reason || "agent decision",
-        signal_snapshot: signalSnapshot,
+        signal_snapshot: snapshotWithExit,
         entry_mcap: tracked.entry_mcap ?? null,
         entry_tvl: tracked.entry_tvl ?? null,
         entry_volume: tracked.entry_volume ?? null,

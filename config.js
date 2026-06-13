@@ -19,24 +19,15 @@ function readJsonIfExists(filePath) {
 
 const u = readJsonIfExists(USER_CONFIG_PATH);
 const gmgnUserConfig = readJsonIfExists(GMGN_CONFIG_PATH);
-export const MIN_SAFE_BINS_BELOW = 35;
+export const MIN_SAFE_BINS_BELOW = 10;
 
 function numericConfig(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
-const legacyBinsBelow = numericConfig(u.binsBelow);
-const configuredMinBinsBelow = numericConfig(u.minBinsBelow) ?? MIN_SAFE_BINS_BELOW;
-const configuredMaxBinsBelow = numericConfig(u.maxBinsBelow)
-  ?? (legacyBinsBelow != null ? Math.max(legacyBinsBelow, configuredMinBinsBelow) : 69);
-const configuredDefaultBinsBelow = numericConfig(u.defaultBinsBelow) ?? legacyBinsBelow ?? configuredMaxBinsBelow;
-const strategyMinBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Math.round(configuredMinBinsBelow));
-const strategyMaxBinsBelow = Math.max(strategyMinBinsBelow, Math.round(configuredMaxBinsBelow));
-const strategyDefaultBinsBelow = Math.max(
-  strategyMinBinsBelow,
-  Math.min(strategyMaxBinsBelow, Math.round(configuredDefaultBinsBelow)),
-);
+const strategyDefaultDownsidePct = Math.max(1, numericConfig(u.defaultDownsidePct) ?? 60);
+const strategyDefaultUpsidePct   = Math.max(0, numericConfig(u.defaultUpsidePct)   ?? 0);
 
 // Apply wallet/RPC from user-config if not already in env
 if (u.rpcUrl)    process.env.RPC_URL            ||= u.rpcUrl;
@@ -78,6 +69,7 @@ export const config = {
   risk: {
     maxPositions:    u.maxPositions    ?? 3,
     maxDeployAmount: u.maxDeployAmount ?? 50,
+    allowMultiplePositionsPerToken: u.allowMultiplePositionsPerToken ?? false,
   },
 
   // ─── Pool Screening Thresholds ───────────
@@ -109,6 +101,13 @@ export const config = {
     blockedLaunchpads:  u.blockedLaunchpads  ?? [],  // e.g. ["letsbonk.fun", "pump.fun"]
     minTokenAgeHours:   u.minTokenAgeHours   ?? null, // null = no minimum
     maxTokenAgeHours:   u.maxTokenAgeHours   ?? null, // null = no maximum
+    athFilterPct:       u.athFilterPct       ?? null, // e.g. -20 = only deploy if price is >= 20% below ATH
+    maxVolatilityToDeploy: u.maxVolatilityToDeploy ?? null, // null = no ceiling; e.g. 8 to block high-vol rugs
+    maxRiskLevel:          u.maxRiskLevel          ?? 3,    // max OKX risk_level (1-5); pools above this are rejected
+    minFeeChangePct:    u.minFeeChangePct    ?? -50,  // reject pools where fee_change_pct < this; null = disabled
+    minVolumeChangePct: u.minVolumeChangePct ?? null, // null = disabled; e.g. 0 = block pools where volume is declining
+    maxPriceChange1hPct: u.maxPriceChange1hPct ?? null, // reject pools where 1h price change > this (pump top); null = disabled
+    halalFilter:         u.halalFilter         ?? true,  // block tokens whose narrative/links describe haram activities
   },
 
   gmgn: {
@@ -176,6 +175,8 @@ export const config = {
     autoSwapRetryDelayMs:  u.autoSwapRetryDelayMs  ?? 3000, // delay between auto-swap retries
     outOfRangeBinsToClose: u.outOfRangeBinsToClose ?? 10,
     outOfRangeWaitMinutes: u.outOfRangeWaitMinutes ?? 30,
+    outOfRangeWaitMinutesAbove: u.outOfRangeWaitMinutesAbove ?? 5,
+    outOfRangeWaitMinutesBelow: u.outOfRangeWaitMinutesBelow ?? 60,
     oorCooldownTriggerCount: u.oorCooldownTriggerCount ?? 3,
     oorCooldownHours:       u.oorCooldownHours       ?? 12,
     repeatDeployCooldownEnabled: u.repeatDeployCooldownEnabled ?? true,
@@ -196,17 +197,20 @@ export const config = {
     trailingTakeProfit:    u.trailingTakeProfit    ?? true,
     trailingTriggerPct:    u.trailingTriggerPct    ?? 3,    // activate trailing at X% PnL
     trailingDropPct:       u.trailingDropPct       ?? 1.5,  // close when drops X% from peak
+    binUtilSlEnabled:       u.binUtilSlEnabled     ?? true, // bin-util SL active
+    binUtilSlMinPnl:        u.binUtilSlMinPnl      ?? 0,   // floor: don't fire unless PnL < -N% (0=disabled)
     pnlSanityMaxDiffPct:   u.pnlSanityMaxDiffPct   ?? 5,    // max allowed diff between reported and derived pnl % before ignoring a tick
     // SOL mode — positions, PnL, and balances reported in SOL instead of USD
     solMode:               u.solMode               ?? false,
+    // Close at a loss after X minutes — catches slow bleeders without touching stop-loss threshold
+    maxLossHoldMinutes:    u.maxLossHoldMinutes !== undefined ? u.maxLossHoldMinutes : 60,
   },
 
   // ─── Strategy Mapping ───────────────────
   strategy: {
-    strategy:     u.strategy     ?? "bid_ask",
-    minBinsBelow: strategyMinBinsBelow,
-    maxBinsBelow: strategyMaxBinsBelow,
-    defaultBinsBelow: strategyDefaultBinsBelow,
+    strategy:          u.strategy ?? "bid_ask",
+    defaultDownsidePct: strategyDefaultDownsidePct,
+    defaultUpsidePct:   strategyDefaultUpsidePct,
   },
 
   // ─── Scheduling ─────────────────────────
@@ -295,12 +299,12 @@ export const config = {
 
   jupiter: {
     apiKey: process.env.JUPITER_API_KEY ?? "",
-    referralAccount:
-      process.env.JUPITER_REFERRAL_ACCOUNT ??
-      "9MzhDUnq3KxecyPzvhguQMMPbooXQ3VAoCMPDnoijwey",
-    referralFeeBps: Number(
-      process.env.JUPITER_REFERRAL_FEE_BPS ?? 50,
-    ),
+    // referralAccount:
+    //   process.env.JUPITER_REFERRAL_ACCOUNT ??
+    //   "9MzhDUnq3KxecyPzvhguQMMPbooXQ3VAoCMPDnoijwey",
+    // referralFeeBps: Number(
+    //   process.env.JUPITER_REFERRAL_FEE_BPS ?? 50,
+    // ),
   },
 
   indicators: {
@@ -314,7 +318,19 @@ export const config = {
     candles: indicatorUserConfig.candles ?? 298,
     rsiOversold: indicatorUserConfig.rsiOversold ?? 30,
     rsiOverbought: indicatorUserConfig.rsiOverbought ?? 80,
+    rsiMomentum: indicatorUserConfig.rsiMomentum ?? 55,
+    rsiFloor: indicatorUserConfig.rsiFloor ?? 16,
     requireAllIntervals: indicatorUserConfig.requireAllIntervals ?? false,
+    // Minimum % price must have dipped below the 20-candle high before deploying.
+    // 0 = disabled. 10 = require at least 10% pullback from recent high.
+    minDipPct: indicatorUserConfig.minDipPct ?? 25,
+    dipLookbackCandles: indicatorUserConfig.dipLookbackCandles ?? 36,
+    // Bear-candle momentum filter: block entry when last 5m candle is small bearish
+    // AND p1h is in the moderate-pump range. Set bearCandleFilter=false to disable.
+    bearCandleFilter:     indicatorUserConfig.bearCandleFilter     ?? true,
+    bearCandleMaxBodyPct: indicatorUserConfig.bearCandleMaxBodyPct ?? 3,
+    bearCandleP1hMin:     indicatorUserConfig.bearCandleP1hMin     ?? 0,
+    bearCandleP1hMax:     indicatorUserConfig.bearCandleP1hMax     ?? 30,
   },
 };
 
@@ -330,13 +346,16 @@ export const config = {
  *   3.0 SOL wallet → 0.98 SOL deploy
  *   4.0 SOL wallet → 1.33 SOL deploy
  */
-export function computeDeployAmount(walletSol) {
-  const reserve  = config.management.gasReserve      ?? 0.2;
-  const pct      = config.management.positionSizePct ?? 0.35;
+export function computeDeployAmount(walletSol, pos = 0) {
+  const reserve  = config.management.gasReserve;
+  const pct      = config.management.positionSizePct;
   const floor    = config.management.deployAmountSol;
   const ceil     = config.risk.maxDeployAmount;
+  const maxPos   = config.risk.maxPositions;
+  // Cap compounding factor so a full wallet (pos = maxPos) doesn't overshoot
+  const cappedPos  = Math.min(pos, Math.max(0, maxPos - 1));
   const deployable = Math.max(0, walletSol - reserve);
-  const dynamic    = deployable * pct;
+  const dynamic    = deployable * (pct + cappedPos * 0.1);
   const result     = Math.min(ceil, Math.max(floor, dynamic));
   return parseFloat(result.toFixed(2));
 }
@@ -376,15 +395,12 @@ export function reloadScreeningThresholds() {
     if (fresh.maxBotHoldersPct  != null) s.maxBotHoldersPct = fresh.maxBotHoldersPct;
     if (fresh.allowedLaunchpads !== undefined) s.allowedLaunchpads = fresh.allowedLaunchpads;
     if (fresh.blockedLaunchpads !== undefined) s.blockedLaunchpads = fresh.blockedLaunchpads;
-    const minBinsBelow = numericConfig(fresh.minBinsBelow) ?? config.strategy.minBinsBelow;
-    const maxBinsBelow = numericConfig(fresh.maxBinsBelow) ?? numericConfig(fresh.binsBelow) ?? config.strategy.maxBinsBelow;
-    const defaultBinsBelow = numericConfig(fresh.defaultBinsBelow) ?? numericConfig(fresh.binsBelow) ?? config.strategy.defaultBinsBelow ?? maxBinsBelow;
-    config.strategy.minBinsBelow = Math.max(MIN_SAFE_BINS_BELOW, Math.round(minBinsBelow));
-    config.strategy.maxBinsBelow = Math.max(config.strategy.minBinsBelow, Math.round(maxBinsBelow));
-    config.strategy.defaultBinsBelow = Math.max(
-      config.strategy.minBinsBelow,
-      Math.min(config.strategy.maxBinsBelow, Math.round(defaultBinsBelow)),
-    );
+    if (fresh.minFeeChangePct      !== undefined) s.minFeeChangePct      = fresh.minFeeChangePct;
+    if (fresh.minVolumeChangePct   !== undefined) s.minVolumeChangePct   = fresh.minVolumeChangePct;
+    if (fresh.maxPriceChange1hPct  !== undefined) s.maxPriceChange1hPct  = fresh.maxPriceChange1hPct;
+    if (fresh.maxRiskLevel         !== undefined) s.maxRiskLevel         = fresh.maxRiskLevel;
+    if (fresh.defaultDownsidePct != null) config.strategy.defaultDownsidePct = Math.max(1, Number(fresh.defaultDownsidePct));
+    if (fresh.defaultUpsidePct   != null) config.strategy.defaultUpsidePct   = Math.max(0, Number(fresh.defaultUpsidePct));
   } catch { /* ignore */ }
   try {
     const freshGmgn = readJsonIfExists(GMGN_CONFIG_PATH);

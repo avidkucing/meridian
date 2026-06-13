@@ -253,17 +253,7 @@ function derivLesson(perf) {
   let rule = "";
 
   if (outcome === "good" || outcome === "bad") {
-    if (perf.range_efficiency < 30 && outcome === "bad") {
-      rule = `AVOID: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — went OOR ${100 - perf.range_efficiency}% of the time. Consider wider bin_range or bid_ask strategy.`;
-      tags.push("oor", perf.strategy, `volatility_${Math.round(perf.volatility)}`);
-    } else if (perf.range_efficiency > 80 && outcome === "good") {
-      const entryNote = perf.entry_mcap != null ? ` Entry: mcap=${fmtNum(perf.entry_mcap)}, tvl=${fmtNum(perf.entry_tvl)}, vol=${fmtNum(perf.entry_volume)}.` : "";
-      rule = `PREFER: ${perf.pool_name}-type pools (volatility=${perf.volatility}, bin_step=${perf.bin_step}) with strategy="${perf.strategy}" — ${perf.range_efficiency}% in-range efficiency, PnL +${perf.pnl_pct}%.${entryNote}`;
-      tags.push("efficient", perf.strategy);
-    } else if (outcome === "bad" && perf.close_reason?.includes("volume")) {
-      rule = `AVOID: Pools with fee_tvl_ratio=${perf.fee_tvl_ratio} that showed volume collapse — fees evaporated quickly. Minimum sustained volume check needed before deploying.`;
-      tags.push("volume_collapse");
-    } else if (outcome === "good") {
+    if (outcome === "good") {
       rule = `WORKED: ${context} → PnL +${perf.pnl_pct}%, range efficiency ${perf.range_efficiency}%.`;
       tags.push("worked");
     } else {
@@ -423,8 +413,8 @@ export function evolveThresholds(perfData, config) {
 
   // Apply to live config object immediately
   const s = config.screening;
-  if (changes.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = changes.minFeeActiveTvlRatio;
-  if (changes.minOrganic       != null) s.minOrganic       = changes.minOrganic;
+  if (changes.minFeeActiveTvlRatio  != null) s.minFeeActiveTvlRatio  = changes.minFeeActiveTvlRatio;
+  if (changes.minOrganic            != null) s.minOrganic            = changes.minOrganic;
 
   // Log a lesson summarizing the evolution
   const data = load();

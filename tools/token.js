@@ -1,7 +1,21 @@
+import fs from "fs";
 import { config } from "../config.js";
 import { getGmgnTokenFees, hasGmgnApiKey } from "./gmgn.js";
+import { repoPath } from "../repo-root.js";
 
 const DATAPI_BASE = "https://datapi.jup.ag/v1";
+
+const NARRATIVE_CACHE_FILE = repoPath("narrative-cache.json");
+
+function loadNarrativeCache() {
+  try {
+    return JSON.parse(fs.readFileSync(NARRATIVE_CACHE_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+const narrativeCache = loadNarrativeCache(); // mint → { narrative, status }
 
 // Resolve the global_fees_sol gate value. GMGN's /v1/token/info total_fee is the
 // accurate all-time fee figure; Jupiter's `fees` is slightly off and misleading.
@@ -19,14 +33,18 @@ async function resolveGlobalFeesSol(mint, jupiterFees) {
  * Useful for understanding if a token has a real community/theme vs nothing.
  */
 export async function getTokenNarrative({ mint }) {
+  if (narrativeCache[mint]?.narrative) {
+    return { mint, narrative: narrativeCache[mint].narrative, status: narrativeCache[mint].status };
+  }
   const res = await fetch(`${DATAPI_BASE}/chaininsight/narrative/${mint}`);
   if (!res.ok) throw new Error(`Narrative API error: ${res.status}`);
   const data = await res.json();
-  return {
-    mint,
-    narrative: data.narrative || null,
-    status: data.status,
-  };
+  // Only cache successful responses — don't persist 429/errors
+  if (data.status === "success" || data.narrative) {
+    narrativeCache[mint] = { narrative: data.narrative || null, status: data.status };
+    fs.writeFileSync(NARRATIVE_CACHE_FILE, JSON.stringify(narrativeCache, null, 2));
+  }
+  return { mint, narrative: data.narrative || null, status: data.status };
 }
 
 /**
@@ -53,6 +71,8 @@ export async function getTokenInfo({ query }) {
     organic_label: t.organicScoreLabel,
     launchpad: t.launchpad,
     graduated: !!t.graduatedPool,
+    twitter: t.twitter ?? null,
+    website: t.website ?? null,
     global_fees_sol: t.fees != null ? parseFloat(t.fees.toFixed(2)) : null, // refined to GMGN below
 
     audit: t.audit ? {

@@ -658,6 +658,30 @@ export async function discoverGmgnPools({ limit = 10 } = {}) {
   };
 }
 
+/**
+ * Fetch GMGN's total LP fee (in SOL) for a token mint.
+ * Used to enrich Meteora-sourced candidates with accurate fee data
+ * instead of Jupiter's global_fees_sol which only counts Jupiter-routed trades.
+ * Returns null on error (non-blocking).
+ */
+export async function fetchGmgnTokenFeeSol(mint) {
+  if (!mint || !getApiKey()) return null;
+  try {
+    const payload = await gmgnFetch("/v1/token/info", { params: { chain: "sol", address: mint } });
+    const info = payload?.data?.data || payload?.data || payload;
+    const totalFee = num(info?.total_fee);
+    const athPrice = num(info?.ath_price);
+    const price    = num(info?.price);
+    const priceVsAthPct = athPrice > 0 && price > 0 ? parseFloat(((price / athPrice) * 100).toFixed(2)) : null;
+    return {
+      total_fee: totalFee > 0 ? totalFee : null,
+      price_vs_ath_pct: priceVsAthPct,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function formatGmgnCandidateForPrompt(p) {
   const sym = p.name || p.base?.symbol || "?";
   const launchpad = p.launchpad || "unknown";
@@ -746,7 +770,10 @@ export async function getGmgnTokenFees(mint) {
     const info = payload?.data?.data || payload?.data || payload;
     if (!info || typeof info !== "object") return null;
     const toNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
-    return { total_fee: toNum(info.total_fee), trade_fee: toNum(info.trade_fee) };
+    const athPrice = toNum(info.ath_price);
+    const price    = toNum(info.price);
+    const priceVsAthPct = athPrice > 0 && price > 0 ? parseFloat(((price / athPrice) * 100).toFixed(2)) : null;
+    return { total_fee: toNum(info.total_fee), trade_fee: toNum(info.trade_fee), ath_price: athPrice, price_vs_ath_pct: priceVsAthPct };
   } catch (error) {
     log("gmgn", `token fees lookup failed for ${String(mint).slice(0, 8)}: ${error.message}`);
     return null;

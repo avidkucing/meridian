@@ -16,6 +16,8 @@ gmgn-config.json
 
 # Runtime state (position tracking, lessons — user-specific)
 state.json
+state_closed.json
+position-memory.json
 lessons.json
 smart-wallets.json
 pool-memory.json
@@ -23,6 +25,7 @@ token-blacklist.json
 strategy-library.json
 decision-log.json
 hivemind-cache.json
+narrative-cache.json
 signal-weights.json
 
 # Logs
@@ -33,7 +36,20 @@ logs/
 
 # Dev context
 context.md
-docs/
 
 # Test files
 test-*.js
+
+# Discord listener queue
+discord-signals.json
+
+# Playwright MCP browser logs
+.playwright-mcp/
+
+# Claude Code runtime lock
+.claude
+
+logs.txt
+ohlcv-cache
+*.pem
+*.b64

@@ -7,7 +7,7 @@ import { agentLoop } from "./agent.js";
 import { log } from "./logger.js";
 import { getMyPositions, closePosition, getActiveBin } from "./tools/dlmm.js";
 import { getWalletBalances } from "./tools/wallet.js";
-import { getTopCandidates, degenScore } from "./tools/screening.js";
+import { getTopCandidates, degenScore, getTopCanditatesWithAllSources } from "./tools/screening.js";
 import { formatGmgnCandidateForPrompt } from "./tools/gmgn.js";
 import { config, reloadScreeningThresholds, computeDeployAmount } from "./config.js";
 import { evolveThresholds, getPerformanceSummary } from "./lessons.js";
@@ -28,7 +28,7 @@ import {
 import { generateBriefing } from "./briefing.js";
 import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, confirmPeak, registerExitSignal } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
-import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
+import { recordPositionSnapshot, addPoolNote } from "./pool-memory.js";
 import { checkSmartWalletsOnPool } from "./smart-wallets.js";
 import { getTokenNarrative, getTokenInfo } from "./tools/token.js";
 import { stageSignals } from "./signal-tracker.js";
@@ -95,6 +95,8 @@ let _screeningBusy = false;  // prevents overlapping screening cycles
 let _screeningLastTriggered = 0; // epoch ms — prevents management from spamming screening
 // Exit/peak confirmation is now done by consecutive-tick counting in state.js
 // (registerExitSignal / confirmPeak), driven by the 3s RPC poller — no setTimeout rechecks.
+// Fresh deploys produce unreliable PnL readings; skip peak tracking until position has settled.
+const PNL_DEPLOY_COOLDOWN_MS = 1 * 60_000; // 1 minute
 
 /** Strip <think>...</think> reasoning blocks that some models leak into output */
 function stripThink(text) {
@@ -241,12 +243,15 @@ export async function runManagementCycle({ silent = false } = {}) {
       mgmtReport = "No open positions. Triggering screening cycle.";
       runScreeningCycle().catch((e) => log("cron_error", `Triggered screening failed: ${e.message}`));
       return mgmtReport;
+      // log("cron", "No open positions — skipping management cycle");
+      // mgmtReport = "No open positions. Skipping management cycle.";
+      // return mgmtReport;
     }
 
     // Snapshot + load pool memory
     const positionData = positions.map((p) => {
       recordPositionSnapshot(p.pool, p);
-      return { ...p, recall: recallForPool(p.pool) };
+      return { ...p };
     });
 
     // JS exit checks. Management is the slow cron backstop: raise peak immediately
@@ -254,7 +259,15 @@ export async function runManagementCycle({ silent = false } = {}) {
     // confirmation lives in the fast 3s poller below.
     const exitMap = new Map();
     for (const p of positionData) {
-      confirmPeak(p.position, p.pnl_pct, 1);
+      const trackedForCooldown = getTrackedPosition(p.position);
+      const deployAgeMs = trackedForCooldown?.deployed_at
+        ? Date.now() - new Date(trackedForCooldown.deployed_at).getTime()
+        : Infinity;
+      if (deployAgeMs < PNL_DEPLOY_COOLDOWN_MS) {
+        log("state", `[PnL] Skipping peak/exit check for ${p.pair} — deploy cooldown (${Math.round(deployAgeMs / 1000)}s < ${PNL_DEPLOY_COOLDOWN_MS / 1000}s)`);
+        continue;
+      }
+      if (!p.pnl_pct_suspicious) confirmPeak(p.position, p.pnl_pct, 1);
       const exit = updatePnlAndCheckExits(p.position, p, config.management);
       if (exit) {
         exitMap.set(p.position, exit.reason);
@@ -277,7 +290,7 @@ export async function runManagementCycle({ silent = false } = {}) {
         continue;
       }
 
-      const closeRule = getDeterministicCloseRule(p, config.management);
+      const closeRule = getDeterministicCloseRule(p, config.management, positionData.length, config.risk.maxPositions);
       if (closeRule) {
         actionMap.set(p.position, closeRule);
         continue;
@@ -317,11 +330,8 @@ export async function runManagementCycle({ silent = false } = {}) {
     mgmtReport = reportLines.join("\n\n") +
       `\n\nSummary: 💼 ${positions.length} positions | ${cur}${totalValue.toFixed(4)} | fees: ${cur}${totalUnclaimed.toFixed(4)} | ${actionSummary}`;
 
-    // ── Call LLM only if action needed ──────────────────────────────
-    const actionPositions = positionData.filter(p => {
-      const a = actionMap.get(p.position);
-      return a.action !== "STAY";
-    });
+    // ── Execute deterministic actions directly, LLM only for INSTRUCTION ──
+    const actionPositions = positionData.filter(p => actionMap.get(p.position).action !== "STAY");
 
     if (actionPositions.length > 0) {
       const execReport = await executeManagementActions(actionPositions, actionMap, { liveMessage, cur });
@@ -331,7 +341,7 @@ export async function runManagementCycle({ silent = false } = {}) {
       await liveMessage?.note("No tool actions needed.");
     }
 
-    // Trigger screening after management
+    // Trigger screening after management if capacity remains
     const afterPositions = await getMyPositions({ force: true }).catch(() => null);
     const afterCount = afterPositions?.positions?.length ?? 0;
     if (afterCount < config.risk.maxPositions && Date.now() - _screeningLastTriggered > screeningCooldownMs) {
@@ -349,8 +359,15 @@ export async function runManagementCycle({ silent = false } = {}) {
         else sendMessage(`🔄 Management Cycle\n\n${stripThink(mgmtReport)}`).catch(() => { });
       }
       for (const p of positions) {
-        if (!p.in_range && p.minutes_out_of_range >= config.management.outOfRangeWaitMinutes) {
-          notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range }).catch(() => { });
+        if (!p.in_range && p.minutes_out_of_range > 0) {
+          const tracked = getTrackedPosition(p.position);
+          const oorDir = tracked?.out_of_range_direction;
+          const oorWait = oorDir === 'above'
+            ? config.management.outOfRangeWaitMinutesAbove
+            : config.management.outOfRangeWaitMinutesBelow;
+          if (p.minutes_out_of_range >= oorWait) {
+            notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range }).catch(() => { });
+          }
         }
       }
     }
@@ -368,18 +385,20 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
   // Hard guards — don't even run the agent if preconditions aren't met
   let prePositions, preBalance;
+  let prePositionCount = 0;
   let liveMessage = null;
   let screenReport = null;
   try {
     [prePositions, preBalance] = await Promise.all([getMyPositions({ force: true }), getWalletBalances()]);
-    if (prePositions.total_positions >= config.risk.maxPositions) {
-      log("cron", `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`);
-      screenReport = `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions}).`;
+    prePositionCount = prePositions.total_positions;
+    if (prePositionCount >= config.risk.maxPositions) {
+      log("cron", `Screening skipped — max positions reached (${prePositionCount}/${config.risk.maxPositions})`);
+      screenReport = `Screening skipped — max positions reached (${prePositionCount}/${config.risk.maxPositions}).`;
       appendDecision({
         type: "skip",
         actor: "SCREENER",
         summary: "Screening skipped",
-        reason: `Max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`,
+        reason: `Max positions reached (${prePositionCount}/${config.risk.maxPositions})`,
       });
       _screeningBusy = false;
       return screenReport;
@@ -412,17 +431,17 @@ export async function runScreeningCycle({ silent = false } = {}) {
   try {
     // Reuse pre-fetched balance — no extra RPC call needed
     const currentBalance = preBalance;
-    const deployAmount = computeDeployAmount(currentBalance.sol);
-    log("cron", `Computed deploy amount: ${deployAmount} SOL (wallet: ${currentBalance.sol} SOL)`);
+    const deployAmount = computeDeployAmount(currentBalance.sol, prePositionCount);
+    log("cron", `Computed deploy amount: ${deployAmount} SOL (wallet: ${currentBalance.sol} SOL, positions: ${prePositionCount})`);
 
     // Load active strategy
-    const activeStrategy = getActiveStrategy();
-    const deployStrategy = config.strategy.strategy;
-    const strategyBlock = `DEPLOY STRATEGY: ${deployStrategy} (from config) | bins_above: 0 (FIXED — never change) | deposit: SOL only (amount_y, amount_x=0)`
-      + (activeStrategy ? `\nSTRATEGY CONTEXT: ${activeStrategy.name} — entry: ${activeStrategy.entry?.condition || "n/a"} | exit: ${activeStrategy.exit?.notes || "n/a"} | best for: ${activeStrategy.best_for}` : "");
+    // const activeStrategy = getActiveStrategy();
+    // const deployStrategy = config.strategy.strategy;
+    // const strategyBlock = `DEPLOY STRATEGY: ${deployStrategy} (from config) | bins_above: 0 (FIXED — never change) | deposit: SOL only (amount_y, amount_x=0)`
+    //   + (activeStrategy ? `\nSTRATEGY CONTEXT: ${activeStrategy.name} — entry: ${activeStrategy.entry?.condition || "n/a"} | exit: ${activeStrategy.exit?.notes || "n/a"} | best for: ${activeStrategy.best_for}` : "");
 
     // Fetch top candidates, then recon each sequentially with a small delay to avoid 429s
-    const topCandidates = await getTopCandidates({ limit: 10 }).catch((e) => ({ _error: e.message }));
+    const topCandidates = await getTopCanditatesWithAllSources({ limit: 10, positions: prePositions.positions ?? [] }).catch((e) => ({ _error: e.message }));
     if (topCandidates?._error) {
       screenReport = `Screening failed: ${topCandidates._error}`;
       return screenReport;
@@ -432,52 +451,28 @@ export async function runScreeningCycle({ silent = false } = {}) {
     const gmgnStageCounts = topCandidates?.stage_counts ?? null;
     const gmgnAllFiltered = topCandidates?.all_filtered ?? [];
 
+    // Enrich surviving candidates with LLM context (smart wallets, narrative)
+    // Token info was already fetched during screening enrichment — reuse pool._ti
     const allCandidates = [];
     for (const pool of candidates) {
       const mint = pool.base?.mint;
-      const [smartWallets, narrative, tokenInfo] = await Promise.allSettled([
+      const [smartWallets, narrative] = await Promise.allSettled([
         checkSmartWalletsOnPool({ pool_address: pool.pool }),
         mint ? getTokenNarrative({ mint }) : Promise.resolve(null),
-        mint ? getTokenInfo({ query: mint }) : Promise.resolve(null),
       ]);
       allCandidates.push({
         pool,
         sw: smartWallets.status === "fulfilled" ? smartWallets.value : null,
         n: narrative.status === "fulfilled" ? narrative.value : null,
-        ti: tokenInfo.status === "fulfilled" ? tokenInfo.value?.results?.[0] : null,
-        mem: recallForPool(pool.pool),
+        ti: pool._ti ?? null,
+        mem: null,
       });
       await new Promise(r => setTimeout(r, 150)); // avoid 429s
     }
-
-    // Hard filters after token recon — block launchpads and excessive Jupiter bot holders
-    // Skipped for GMGN: platforms already filtered upstream; bundler/bot data from GMGN pipeline
-    const filteredOut = [];
-    const passing = allCandidates.filter(({ pool, ti }) => {
-      if (pool.gmgn) return true;
-      const launchpad = ti?.launchpad ?? null;
-      if (launchpad && config.screening.allowedLaunchpads?.length > 0 && !config.screening.allowedLaunchpads.includes(launchpad)) {
-        log("screening", `Skipping ${pool.name} — launchpad ${launchpad} not in allow-list`);
-        filteredOut.push({ name: pool.name, reason: `launchpad ${launchpad} not in allow-list` });
-        return false;
-      }
-      if (launchpad && config.screening.blockedLaunchpads.includes(launchpad)) {
-        log("screening", `Skipping ${pool.name} — blocked launchpad (${launchpad})`);
-        filteredOut.push({ name: pool.name, reason: `blocked launchpad (${launchpad})` });
-        return false;
-      }
-      const botPct = ti?.audit?.bot_holders_pct;
-      const maxBotHoldersPct = config.screening.maxBotHoldersPct;
-      if (botPct != null && maxBotHoldersPct != null && botPct > maxBotHoldersPct) {
-        log("screening", `Bot-holder filter: dropped ${pool.name} — bots ${botPct}% > ${maxBotHoldersPct}%`);
-        filteredOut.push({ name: pool.name, reason: `bot holders ${botPct}% > ${maxBotHoldersPct}%` });
-        return false;
-      }
-      return true;
-    });
+    const passing = allCandidates;
 
     if (passing.length === 0) {
-      const combined = filteredOut.length > 0 ? filteredOut : earlyFilteredExamples;
+      const combined = earlyFilteredExamples;
       const combinedExamples = combined.slice(0, 5)
         .map((entry) => `- ${entry.name}: ${entry.reason}`)
         .join("\n");
@@ -544,7 +539,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
     const candidateBlocks = passing.map(({ pool, sw, n, ti, mem }, i) => {
       const botPct = ti?.audit?.bot_holders_pct ?? "?";
       const top10Pct = ti?.audit?.top_holders_pct ?? "?";
-      const feesSol = ti?.global_fees_sol ?? "?";
+      const feesSol = pool.gmgn_total_fee_sol ?? ti?.global_fees_sol ?? "?";
       const launchpad = ti?.launchpad ?? null;
       const priceChange = ti?.stats_1h?.price_change;
       const netBuyers = ti?.stats_1h?.net_buyers;
@@ -553,23 +548,29 @@ export async function runScreeningCycle({ silent = false } = {}) {
       const pvpLine = pool.is_pvp
         ? `  pvp: HIGH — rival ${pool.pvp_rival_name || pool.pvp_symbol} (${pool.pvp_rival_mint?.slice(0, 8)}...) has pool ${pool.pvp_rival_pool?.slice(0, 8)}..., tvl=$${pool.pvp_rival_tvl}, holders=${pool.pvp_rival_holders}, fees=${pool.pvp_rival_fees}SOL`
         : null;
+
+      // Show token mint in header so LLM distinguishes same-named tokens with different mints
+      const candidateBaseMint = pool.base?.mint || pool.base_mint || ti?.mint || null;
+      const poolHeader = candidateBaseMint
+        ? `POOL: ${pool.name} | pool=${pool.pool} | token_mint=${candidateBaseMint}`
+        : `POOL: ${pool.name} (${pool.pool})`;
+
       let block;
       if (pool.gmgn) {
         block = [
-          `POOL: ${pool.name} (${pool.pool})`,
+          poolHeader,
           formatGmgnCandidateForPrompt(pool),
           pvpLine,
           `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map(w => w.name).join(", ")})` : ""}`,
           activeBin != null ? `  active_bin: ${activeBin}` : null,
           n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
-          mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
         ].filter(Boolean).join("\n");
       } else {
         const gmgnPriceLine = pool.gmgn_price_action
           ? `  gmgn_price: rsi2=${pool.gmgn_price_action.rsi2 ?? "?"}, supertrend=${pool.gmgn_price_action.supertrend?.direction || "?"}, price_vs_ath=${pool.gmgn_price_action.priceVsAthPct ?? "?"}%, 1h_change=${pool.gmgn_price_action.priceChangePct ?? "?"}%, max_vol_candle=${pool.gmgn_price_action.maxVolumeShare ?? "?"}%`
           : null;
         block = [
-          `POOL: ${pool.name} (${pool.pool})`,
+          poolHeader,
           `  metrics: bin_step=${pool.bin_step}, fee_pct=${pool.fee_pct}%, fee_tvl=${pool.fee_active_tvl_ratio}, vol=$${pool.volume_window}, tvl=$${pool.tvl ?? pool.active_tvl}, volatility_${pool.volatility_timeframe || "30m"}=${pool.volatility}, mcap=$${pool.mcap}, organic=${pool.organic_score}${pool.token_age_hours != null ? `, age=${pool.token_age_hours}h` : ""}`,
           `  audit: top10=${top10Pct}%, bots=${botPct}%, fees=${feesSol}SOL${launchpad ? `, launchpad=${launchpad}` : ""}`,
           gmgnPriceLine,
@@ -578,23 +579,51 @@ export async function runScreeningCycle({ silent = false } = {}) {
           activeBin != null ? `  active_bin: ${activeBin}` : null,
           priceChange != null ? `  1h: price${priceChange >= 0 ? "+" : ""}${priceChange}%, net_buyers=${netBuyers ?? "?"}` : null,
           n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
-          mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
         ].filter(Boolean).join("\n");
       }
 
       // Stage signals for Darwinian weighting — captured before LLM decides
       if (config.darwin?.enabled) {
-        const baseMint = pool.base?.mint || pool.base_mint || ti?.mint || null;
         stageSignals(pool.pool, {
-          base_mint:             baseMint,
-          organic_score:         pool.organic_score         ?? null,
+          // Identity
+          base_mint:             candidateBaseMint,
+          // Pool metrics
+          organic_score:         pool.organic_score          ?? null,
           fee_tvl_ratio:         pool.fee_active_tvl_ratio  ?? null,
-          volume:                pool.volume_window         ?? null,
-          mcap:                  pool.mcap                  ?? null,
-          holder_count:          ti?.holders                ?? null,
+          fee_change_pct:        pool.fee_change_pct         ?? null,
+          volume:                pool.volume_window          ?? null,
+          volume_change_pct:     pool.volume_change_pct      ?? null,
+          fee_window:            pool.fee_window             ?? null,
+          tvl:                   pool.tvl                    ?? null,
+          active_tvl:            pool.active_tvl             ?? null,
+          volatility:            pool.volatility             ?? null,
+          bin_step:              pool.bin_step               ?? null,
+          fee_pct:               pool.fee_pct                ?? null,
+          swap_count:            pool.swap_count             ?? null,
+          unique_traders:        pool.unique_traders         ?? null,
+          active_positions:      pool.active_positions       ?? null,
+          active_pct:            pool.active_pct             ?? null,
+          // Price action
+          price_vs_ath_pct:      pool.price_vs_ath_pct       ?? null,
+          price_change_pct:      pool.price_change_pct       ?? null,
+          // Token
+          mcap:                  pool.mcap                   ?? null,
+          token_age_hours:       pool.token_age_hours        ?? null,
+          holder_count:          ti?.holders                 ?? null,
+          bot_holders_pct:       ti?.audit?.bot_holders_pct  ?? null,
+          top10_holders_pct:     ti?.audit?.top_holders_pct  ?? null,
+          global_fees_sol:       pool.gmgn_total_fee_sol ?? ti?.global_fees_sol ?? null,
+          launchpad:             ti?.launchpad               ?? null,
+          price_change_1h:       ti?.stats_1h?.price_change  ?? null,
+          net_buyers_1h:         ti?.stats_1h?.net_buyers    ?? null,
+          // Signals
+          smart_wallets_count:   sw?.in_pool?.length         ?? 0,
           smart_wallets_present: (sw?.in_pool?.length ?? 0) > 0,
           narrative_quality:     n?.narrative ? "present" : "absent",
-          volatility:            pool.volatility            ?? null,
+          discord_signal:        pool.discord_signal         ?? false,
+          discord_signal_count:  pool.discord_signal_count   ?? 0,
+          // Risk
+          is_pvp:                pool.is_pvp                 ?? null,
         });
       }
 
@@ -605,38 +634,46 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
     let deployAttempted = false;
     let deploySucceeded = false;
+
+    const deployConfigBlock = `DEPLOY CONFIG:
+strategy = ${config.strategy.strategy} (always use this, never change it).
+downside_pct = ${config.strategy.defaultDownsidePct ?? 60} (range extends this % below current price).
+upside_pct = ${config.strategy.defaultUpsidePct ?? 0} (range extends this % above current price; 0 = single-sided SOL only).`;
+
+    // Build held-token mint list so LLM can distinguish same-named tokens with different mints
+    const heldTokens = (prePositions.positions ?? [])
+      .filter(p => p.base_mint)
+      .map(p => `${p.pair || p.pool.slice(0,8)} → ${p.base_mint}`)
+      .join(", ");
+
     const { content } = await agentLoop(`
 SCREENING CYCLE
-${strategyBlock}
-Positions: ${prePositions.total_positions}/${config.risk.maxPositions} | SOL: ${currentBalance.sol.toFixed(3)} | Deploy: ${deployAmount} SOL
+Positions: ${prePositionCount}/${config.risk.maxPositions} | SOL: ${currentBalance.sol.toFixed(3)} | Deploy: ${deployAmount} SOL
+${heldTokens ? `Held token mints: ${heldTokens}` : ""}
 
-PRE-LOADED CANDIDATES (${passing.length} pools):
+PRE-LOADED CANDIDATES (${passing.length} pools) — all have already passed hard filters (fee/tvl>${config.screening.minFeeActiveTvlRatio}%, tvl, volume, organic, holders). Do NOT re-reject on these metrics — they are confirmed in range:
 ${candidateBlocks.join("\n\n")}
 
 STEPS:
-1. Decide whether any candidate is worth deploying. A single remaining candidate is not automatically good enough.
-2. Pick the best candidate only if it has real conviction from narrative quality, smart wallets, and pool metrics. If the list has only one pool and it lacks narrative or smart-wallet confirmation, skip the cycle.
+1. Decide whether any candidate is worth deploying. Only reject based on qualitative signals (rug risk, suspicious pattern) — not on the numeric thresholds already applied above.
+2. Focus on current pool metrics — narrative quality and smart wallet presence are your judgment inputs.
 3. If a pool qualifies, call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
-   strategy = ${config.strategy.strategy} (always use this, never change it).
-   bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*${config.strategy.maxBinsBelow - config.strategy.minBinsBelow}) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
-   pass deploy_position.volatility = the candidate volatility value.
-   bins_above = 0. Single-side SOL only: set amount_y, keep amount_x = 0.
+   ${deployConfigBlock}
 4. Report in this exact format (no tables, no extra sections):
    🚀 DEPLOYED
 
    <pool name>
    <pool address>
 
-   ◎ <deploy amount> SOL | <strategy> | bin <active_bin>
+   ◎ <deploy amount> SOL | <strategy> | bin range: <total_bins>
    Range: <minPrice> → <maxPrice>
-   Range cover: <downside %> downside | <upside %> upside | <total width %> total
+   Range cover: <downside %> downside | <upside %> upside
 
    IMPORTANT:
    - Do NOT calculate the range percentages yourself.
    - Use the actual deploy_position tool result:
      range_coverage.downside_pct
      range_coverage.upside_pct
-     range_coverage.width_pct
 
    MARKET
    Fee/TVL: <x>%
@@ -762,18 +799,24 @@ Summarize the current portfolio health, total fees earned, and performance of al
   const confirmTicks = Math.max(1, Number(config.pnl.confirmTicks ?? 2));
   let _pnlPollBusy = false;
   const pnlPollInterval = setInterval(async () => {
-    if (_managementBusy || _screeningBusy || _pnlPollBusy) return;
+    if (_managementBusy || _pnlPollBusy) return;
     if (getTrackedPositions(true).length === 0) return;
     _pnlPollBusy = true;
     try {
       const result = await getMyPositions({ force: true, silent: true }).catch(() => null);
       if (!result?.positions?.length) return;
       for (const p of result.positions) {
-        confirmPeak(p.position, p.pnl_pct, confirmTicks);
+        const trackedForCooldown = getTrackedPosition(p.position);
+        const deployAgeMs = trackedForCooldown?.deployed_at
+          ? Date.now() - new Date(trackedForCooldown.deployed_at).getTime()
+          : Infinity;
+        if (deployAgeMs < PNL_DEPLOY_COOLDOWN_MS) continue;
+
+        if (!p.pnl_pct_suspicious) confirmPeak(p.position, p.pnl_pct, confirmTicks);
 
         // Detect an exit signal this tick (rule-based exits, then deterministic close rules).
         const exit = updatePnlAndCheckExits(p.position, p, config.management);
-        const closeRule = exit ? null : getDeterministicCloseRule(p, config.management);
+        const closeRule = exit ? null : getDeterministicCloseRule(p, config.management, result.positions.length, config.risk.maxPositions);
         let signal = null, reason = null, rule = "exit";
         if (exit) { signal = exit.action; reason = exit.reason; }
         else if (closeRule) { signal = `RULE_${closeRule.rule}`; reason = closeRule.reason; rule = closeRule.rule; }
@@ -934,7 +977,7 @@ function formatCandidates(candidates) {
   ].join("\n");
 }
 
-function getDeterministicCloseRule(position, managementConfig) {
+function getDeterministicCloseRule(position, managementConfig, totalPositions, maxPositions) {
   const tracked = getTrackedPosition(position.position);
   const pnlSuspect = (() => {
     // Couldn't-price-this-tick flag (e.g. Jupiter outage) — never act on PnL rules.
@@ -951,7 +994,7 @@ function getDeterministicCloseRule(position, managementConfig) {
   if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct <= managementConfig.stopLossPct) {
     return { action: "CLOSE", rule: 1, reason: "stop loss" };
   }
-  if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct >= managementConfig.takeProfitPct) {
+  if (!pnlSuspect && position.pnl_pct != null && managementConfig.takeProfitPct > 0 && position.pnl_pct >= managementConfig.takeProfitPct) {
     return { action: "CLOSE", rule: 2, reason: "take profit" };
   }
   if (
@@ -964,36 +1007,66 @@ function getDeterministicCloseRule(position, managementConfig) {
   if (
     position.active_bin != null &&
     position.upper_bin != null &&
-    position.active_bin > position.upper_bin &&
-    (position.minutes_out_of_range ?? 0) >= managementConfig.outOfRangeWaitMinutes
+    position.lower_bin != null &&
+    (position.active_bin > position.upper_bin || position.active_bin < position.lower_bin)
   ) {
-    return { action: "CLOSE", rule: 4, reason: "OOR" };
+    const oorDirection = position.active_bin > position.upper_bin ? 'above' : 'below';
+    const waitMinutes = oorDirection === 'above'
+      ? (managementConfig.outOfRangeWaitMinutesAbove ?? managementConfig.outOfRangeWaitMinutes)
+      : (managementConfig.outOfRangeWaitMinutesBelow ?? managementConfig.outOfRangeWaitMinutes);
+    if ((position.minutes_out_of_range ?? 0) >= waitMinutes) {
+      return { action: "CLOSE", rule: 4, reason: `OOR ${oorDirection} for ${position.minutes_out_of_range}m (limit: ${waitMinutes}m)` };
+    }
   }
-  if (
+  const shouldCloseLowYield = totalPositions >= maxPositions &&
     position.fee_per_tvl_24h != null &&
     position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h &&
-    (position.age_minutes ?? 0) >= 60
-  ) {
+    (position.age_minutes ?? 0) >= 60;
+  if (shouldCloseLowYield) {
+    log("cron_warn", `Rule5 debug: total=${totalPositions} max=${maxPositions} fee=${position.fee_per_tvl_24h} age=${position.age_minutes} pnl=${position.pnl_pct}`);
     return { action: "CLOSE", rule: 5, reason: "low yield" };
+  }
+  const maxLossHold = managementConfig.maxLossHoldMinutes;
+  if (
+    maxLossHold != null &&
+    maxLossHold > 0 &&
+    !pnlSuspect &&
+    position.pnl_pct != null &&
+    position.pnl_pct < 0 &&
+    (position.age_minutes ?? 0) >= maxLossHold &&
+    // Exempt positions still earning strong fees — IL may be temporary while fee income is real
+    (position.fee_per_tvl_24h == null || position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h)
+  ) {
+    return { action: "CLOSE", rule: 6, reason: `max loss hold: held ${position.age_minutes}m at ${position.pnl_pct.toFixed(2)}% loss (limit: ${maxLossHold}m)` };
   }
   return null;
 }
 
 function buildGmgnFunnelReport(stageCounts, allFiltered = [], { fromStage = 1 } = {}) {
-  if (!stageCounts) return null;
-  const sc = stageCounts;
-  const funnel = `GMGN funnel: ranked=${sc.ranked ?? "?"} → S1=${sc.s1 ?? "?"} → S2=${sc.s2 ?? "?"} → S3=${sc.s3 ?? "?"} → S4=${sc.s4 ?? "?"} → final=${sc.s5 ?? "?"}`;
   const byStage = {};
+  const stageless = [];
   for (const f of allFiltered) {
+    if (f.stage == null) {
+      stageless.push(`${f.name}: ${f.reason}`);
+      continue;
+    }
     if (f.stage < fromStage) continue;
     const key = `s${f.stage}`;
     if (!byStage[key]) byStage[key] = [];
     byStage[key].push(`${f.name}: ${f.reason}`);
   }
+  const rejectedBlock = stageless.length ? `Rejected:\n${stageless.map(r => `  • ${r}`).join("\n")}` : null;
+
+  // No GMGN funnel data — still surface stageless rejections (e.g. halal filter)
+  if (!stageCounts) return rejectedBlock;
+
+  const sc = stageCounts;
+  const funnel = `GMGN funnel: ranked=${sc.ranked ?? "?"} → S1=${sc.s1 ?? "?"} → S2=${sc.s2 ?? "?"} → S3=${sc.s3 ?? "?"} → S4=${sc.s4 ?? "?"} → final=${sc.s5 ?? "?"}`;
   const stageLabels = { s2: "S2 info", s3: "S3 pool", s4: "S4 indicators", s5: "S5 pick" };
-  const details = Object.entries(byStage)
-    .map(([key, items]) => `${stageLabels[key] || key}:\n${items.map(r => `  • ${r}`).join("\n")}`)
-    .join("\n");
+  const details = [
+    ...Object.entries(byStage).map(([key, items]) => `${stageLabels[key] || key}:\n${items.map(r => `  • ${r}`).join("\n")}`),
+    rejectedBlock,
+  ].filter(Boolean).join("\n");
   return details ? `${funnel}\n\n${details}` : funnel;
 }
 
@@ -1005,7 +1078,7 @@ function getLoneCandidateSkipReason({ pool, sw, n, ti } = {}) {
   // gate here — it's a confidence boost surfaced to the LLM, not a requirement.
   const degen = degenScore(pool, config.opportunity);
   const degenStrong = degen >= (config.screening.loneCandidateMinDegen ?? 50);
-  const globalFeesSol = Number(tokenInfo.global_fees_sol ?? pool.gmgn_total_fee_sol);
+  const globalFeesSol = Number(pool.gmgn_total_fee_sol ?? tokenInfo.global_fees_sol);
   const top10Pct = Number(tokenInfo.audit?.top_holders_pct ?? pool.gmgn_token_info_top10_pct ?? pool.gmgn_top10_holder_pct);
   const botPct = Number(tokenInfo.audit?.bot_holders_pct ?? pool.gmgn_bot_degen_pct);
 
@@ -1035,15 +1108,6 @@ function getLoneCandidateSkipReason({ pool, sw, n, ti } = {}) {
   return null;
 }
 
-function computeBinsBelow(volatility) {
-  const parsedVolatility = Number(volatility);
-  if (!Number.isFinite(parsedVolatility) || parsedVolatility <= 0) {
-    throw new Error(`Invalid volatility ${volatility ?? "unknown"} — refusing volatility-scaled deploy.`);
-  }
-  const lo = config.strategy.minBinsBelow;
-  const hi = config.strategy.maxBinsBelow;
-  return Math.max(lo, Math.min(hi, Math.round(lo + (parsedVolatility / 5) * (hi - lo))));
-}
 
 // ═══════════════════════════════════════════
 //  INTERACTIVE REPL
@@ -1086,13 +1150,13 @@ function describeLatestCandidates(limit = 5) {
 }
 
 function formatWalletStatus(wallet, positions) {
-  const deployAmount = computeDeployAmount(wallet.sol);
+  const deployAmount = computeDeployAmount(wallet.sol, positions.total_positions);
   const hive = isHiveMindEnabled() ? "on" : "off";
   return [
     `Wallet: ${wallet.sol} SOL ($${wallet.sol_usd})`,
     `SOL price: $${wallet.sol_price}`,
     `Open positions: ${positions.total_positions}/${config.risk.maxPositions}`,
-    `Next deploy amount: ${deployAmount} SOL`,
+    `Next deploy: ${deployAmount} SOL`,
     `Dry run: ${process.env.DRY_RUN === "true" ? "yes" : "no"}`,
     `HiveMind: ${hive}`,
   ].join("\n");
@@ -1103,11 +1167,12 @@ function formatConfigSnapshot() {
     "Config snapshot",
     "",
     `Screening source: ${config.screening.source}`,
-    `Strategy: ${config.strategy.strategy} | bins: [${config.strategy.minBinsBelow}–${config.strategy.maxBinsBelow}] (volatility-scaled)`,
+    `Strategy: ${config.strategy.strategy} | range: ${config.strategy.defaultDownsidePct ?? 60}% down / ${config.strategy.defaultUpsidePct ?? 0}% up`,
+    `Thresholds: minFee/TVL ${config.screening.minFeeActiveTvlRatio} | minOrganic ${config.screening.minOrganic} | maxVol ${config.screening.maxVolatilityToDeploy ?? "off"}`,
     `Deploy: ${config.management.deployAmountSol} SOL | gasReserve: ${config.management.gasReserve} | maxPositions: ${config.risk.maxPositions}`,
-    `Stop loss: ${config.management.stopLossPct}% | take profit: ${config.management.takeProfitPct}%`,
+    `Stop loss: ${config.management.stopLossPct}% | take profit: ${config.management.takeProfitPct}% | max loss hold: ${config.management.maxLossHoldMinutes ?? "off"}m`,
     `Trailing: ${config.management.trailingTakeProfit ? "on" : "off"} | trigger ${config.management.trailingTriggerPct}% | drop ${config.management.trailingDropPct}%`,
-    `OOR: ${config.management.outOfRangeWaitMinutes}m | cooldown ${config.management.oorCooldownTriggerCount}x / ${config.management.oorCooldownHours}h`,
+    `OOR: above=${config.management.outOfRangeWaitMinutesAbove}m below=${config.management.outOfRangeWaitMinutesBelow}m | cooldown ${config.management.oorCooldownTriggerCount}x / ${config.management.oorCooldownHours}h`,
     `Repeat deploy cooldown: ${config.management.repeatDeployCooldownEnabled ? "on" : "off"} | ${config.management.repeatDeployCooldownTriggerCount}x / ${config.management.repeatDeployCooldownHours}h | min fee earned ${config.management.repeatDeployCooldownMinFeeEarnedPct}% | ${config.management.repeatDeployCooldownScope}`,
     `Yield floor: ${config.management.minFeePerTvl24h}% | min age ${config.management.minAgeBeforeYieldCheck}m`,
     `Screening: ${config.screening.category} / ${config.screening.timeframe} | TVL ${config.screening.minTvl}-${config.screening.maxTvl}`,
@@ -1159,16 +1224,27 @@ function settingValue(key) {
     gmgnMinTotalFeeSol: config.gmgn.minTotalFeeSol,
     gmgnMinHolders: config.gmgn.minHolders,
     strategy: config.strategy.strategy,
-    minBinsBelow: config.strategy.minBinsBelow,
-    maxBinsBelow: config.strategy.maxBinsBelow,
+    minFeeActiveTvlRatio: config.screening.minFeeActiveTvlRatio,
+    minOrganic: config.screening.minOrganic,
+    maxVolatilityToDeploy: config.screening.maxVolatilityToDeploy,
+    minBinStep: config.screening.minBinStep,
+    maxBinStep: config.screening.maxBinStep,
+    minFeeChangePct: config.screening.minFeeChangePct,
+    maxPriceChange1hPct: config.screening.maxPriceChange1hPct,
+    defaultDownsidePct: config.strategy.defaultDownsidePct ?? 60,
+    defaultUpsidePct:   config.strategy.defaultUpsidePct   ?? 0,
     deployAmountSol: config.management.deployAmountSol,
     gasReserve: config.management.gasReserve,
     maxPositions: config.risk.maxPositions,
     maxDeployAmount: config.risk.maxDeployAmount,
     takeProfitPct: config.management.takeProfitPct,
     stopLossPct: config.management.stopLossPct,
+    maxLossHoldMinutes: config.management.maxLossHoldMinutes,
     trailingTriggerPct: config.management.trailingTriggerPct,
     trailingDropPct: config.management.trailingDropPct,
+    outOfRangeWaitMinutesAbove: config.management.outOfRangeWaitMinutesAbove,
+    outOfRangeWaitMinutesBelow: config.management.outOfRangeWaitMinutesBelow,
+    binUtilSlEnabled: config.management.binUtilSlEnabled,
     repeatDeployCooldownEnabled: config.management.repeatDeployCooldownEnabled,
     repeatDeployCooldownTriggerCount: config.management.repeatDeployCooldownTriggerCount,
     repeatDeployCooldownHours: config.management.repeatDeployCooldownHours,
@@ -1180,6 +1256,7 @@ function settingValue(key) {
     rsiLength: config.indicators.rsiLength,
     indicatorIntervals: config.indicators.intervals,
     requireAllIntervals: config.indicators.requireAllIntervals,
+    allowMultiplePositionsPerToken: config.risk.allowMultiplePositionsPerToken,
   };
   return values[key];
 }
@@ -1234,7 +1311,10 @@ function renderSettingsMenu(page = "main") {
     ],
     [
       settingButton("Screen", "cfg:page:screen"),
+      settingButton("Thresholds", "cfg:page:thresholds"),
       settingButton("Indicators", "cfg:page:indicators"),
+    ],
+    [
       settingButton("GMGN", "cfg:page:gmgn"),
       settingButton("KOL", "cfg:page:kol"),
     ],
@@ -1256,10 +1336,13 @@ function renderSettingsMenu(page = "main") {
       inputButton("maxDeployAmount", "Max SOL"),
       inputButton("takeProfitPct", "TP %"),
       inputButton("stopLossPct", "SL %"),
-      [toggleButton("trailingTakeProfit", "Trailing TP")],
+      inputButton("maxLossHoldMinutes", "Max loss hold (min)"),
+      stepButtons("outOfRangeWaitMinutesAbove", "OOR above (min)", 5),
+      stepButtons("outOfRangeWaitMinutesBelow", "OOR below (min)", 5),
+      [toggleButton("trailingTakeProfit", "Trailing TP"), toggleButton("binUtilSlEnabled", "Bin-util SL")],
       inputButton("trailingTriggerPct", "Trail trigger", { digits: 1 }),
       inputButton("trailingDropPct", "Trail drop", { digits: 1 }),
-      [toggleButton("repeatDeployCooldownEnabled", "Repeat cooldown")],
+      [toggleButton("repeatDeployCooldownEnabled", "Repeat cooldown"), toggleButton("allowMultiplePositionsPerToken", "Multi-token pos")],
       inputButton("repeatDeployCooldownTriggerCount", "Repeat count"),
       inputButton("repeatDeployCooldownHours", "Repeat hrs"),
       inputButton("repeatDeployCooldownMinFeeEarnedPct", "Min fee earned %", { digits: 1 }),
@@ -1290,14 +1373,25 @@ function renderSettingsMenu(page = "main") {
       inputButton("managementIntervalMin", "Manage interval (min)"),
       inputButton("screeningIntervalMin", "Screen interval (min)"),
     ];
+  } else if (page === "thresholds") {
+    rows = [
+      inputButton("minFeeActiveTvlRatio", "Min fee/TVL", { digits: 2 }),
+      inputButton("minOrganic", "Min organic"),
+      inputButton("maxVolatilityToDeploy", "Max vol (off=none)", { digits: 1 }),
+      inputButton("minBinStep", "Min bin step"),
+      inputButton("maxBinStep", "Max bin step"),
+      inputButton("minFeeChangePct", "Min fee chg % (off=none)", { digits: 0 }),
+      inputButton("maxPriceChange1hPct", "Max pump 1h % (off=none)", { digits: 0 }),
+      inputButton("maxRiskLevel", "Max risk level (off=none)", { digits: 0 }),
+    ];
   } else if (page === "strategy") {
     rows = [
       [
         settingButton("spot", "cfg:set:strategy:spot"),
         settingButton("bid_ask", "cfg:set:strategy:bid_ask"),
       ],
-      inputButton("minBinsBelow", "Min bins"),
-      inputButton("maxBinsBelow", "Max bins"),
+      inputButton("defaultDownsidePct", "Downside %"),
+      inputButton("defaultUpsidePct", "Upside %"),
     ];
   } else if (page === "gmgn") {
     rows = [
@@ -1334,6 +1428,7 @@ function renderSettingsMenu(page = "main") {
         settingButton("Entry: ST", "cfg:set:indicatorEntryPreset:supertrend_break"),
         settingButton("Entry: RSI", "cfg:set:indicatorEntryPreset:rsi_reversal"),
         settingButton("Entry: ST/RSI", "cfg:set:indicatorEntryPreset:supertrend_or_rsi"),
+        settingButton("Entry: retrace", "cfg:set:indicatorEntryPreset:pump_retrace"),
       ],
       [
         settingButton("Exit: ST", "cfg:set:indicatorExitPreset:supertrend_break"),
@@ -1401,7 +1496,8 @@ async function applySettingsMenuCallback(msg) {
       : ["gmgnMinVolume", "gmgnMaxBundlerRate", "gmgnMinTokenAgeHours", "gmgnMaxTokenAgeHours"].includes(inputKey) ? "screen"
       : inputKey.startsWith("gmgn") && inputKey !== "gmgnRequireKol" ? "gmgn"
       : inputKey.startsWith("indicator") || inputKey === "chartIndicatorsEnabled" || inputKey === "rsiLength" || inputKey === "requireAllIntervals" ? "indicators"
-      : ["minBinsBelow", "maxBinsBelow"].includes(inputKey) ? "strategy"
+      : ["defaultDownsidePct", "defaultUpsidePct"].includes(inputKey) ? "strategy"
+      : ["minFeeActiveTvlRatio", "minOrganic", "maxVolatilityToDeploy", "minBinStep", "maxBinStep", "minFeeChangePct", "maxPriceChange1hPct", "maxRiskLevel"].includes(inputKey) ? "thresholds"
       : ["useDiscordSignals", "blockPvpSymbols", "managementIntervalMin", "screeningIntervalMin", "screeningSource", "gmgnRequireKol"].includes(inputKey) ? "screen"
       : "risk";
     _pendingInput = { key: inputKey, page: inputPage, menuMsgId: msg.messageId };
@@ -1465,11 +1561,13 @@ async function applySettingsMenuCallback(msg) {
       ? "gmgn"
       : key.startsWith("indicator") || key === "chartIndicatorsEnabled" || key === "rsiLength" || key === "requireAllIntervals"
         ? "indicators"
-        : ["minBinsBelow", "maxBinsBelow"].includes(key)
+        : ["defaultDownsidePct", "defaultUpsidePct"].includes(key)
           ? "strategy"
-          : ["useDiscordSignals", "blockPvpSymbols", "managementIntervalMin", "screeningIntervalMin", "screeningSource", "gmgnRequireKol"].includes(key)
-            ? "screen"
-            : "risk";
+          : ["minFeeActiveTvlRatio", "minOrganic", "maxVolatilityToDeploy", "minBinStep", "maxBinStep", "minFeeChangePct", "maxPriceChange1hPct", "maxRiskLevel"].includes(key)
+            ? "thresholds"
+            : ["useDiscordSignals", "blockPvpSymbols", "managementIntervalMin", "screeningIntervalMin", "screeningSource", "gmgnRequireKol"].includes(key)
+              ? "screen"
+              : "risk";
   await answerCallbackQuery(msg.callbackQueryId, `Updated ${key}`);
   await showSettingsMenu({ messageId: msg.messageId, page });
 }
@@ -1497,6 +1595,7 @@ function formatHelpText() {
     "/hive pull — manual HiveMind pull now",
     "/pause — stop cron cycles",
     "/resume — start cron cycles again",
+    "/addsw — scan candidates for top LPers and add to smart wallets",
     "/stop — shut down agent",
   ].join("\n");
 }
@@ -1554,13 +1653,12 @@ async function deployLatestCandidate(index) {
     }
   }
   const deployAmount = computeDeployAmount((await getWalletBalances()).sol);
-  const binsBelow = computeBinsBelow(candidate.volatility);
   const result = await executeTool("deploy_position", {
     pool_address: candidate.pool,
     amount_y: deployAmount,
     strategy: config.strategy.strategy,
-    bins_below: binsBelow,
-    bins_above: 0,
+    downside_pct: config.strategy.defaultDownsidePct ?? 60,
+    upside_pct:   config.strategy.defaultUpsidePct   ?? 0,
     pool_name: candidate.name,
     base_mint: candidate.base?.mint || candidate.base_mint || null,
     bin_step: candidate.bin_step,
@@ -1573,7 +1671,7 @@ async function deployLatestCandidate(index) {
   if (result?.success === false || result?.error) {
     throw new Error(result.error || "Deploy failed");
   }
-  return { result, candidate, deployAmount, binsBelow };
+  return { result, candidate, deployAmount };
 }
 
 function appendHistory(userMsg, assistantMsg) {
@@ -1801,6 +1899,21 @@ async function telegramHandler(msg) {
     return;
   }
 
+  if (text === "/addsw") {
+    try {
+      await sendMessage("🔍 Fetching candidates and studying top LPers...").catch(() => {});
+      const result = await executeTool("add_top_lpers_from_candidates", { limit: 10, lperLimit: 4 });
+      const added = result?.added?.length ?? 0;
+      const skipped = result?.skipped?.length ?? 0;
+      const total = result?.totalLPersFound ?? 0;
+      const lines = result?.added?.map(w => `• ${w.name} (${w.address.slice(0, 8)}...)`);
+      await sendMessage(`✅ Added ${added} smart wallets (${skipped} skipped, ${total} total LPers found)\n\n${lines?.join("\n") || "none"}`).catch(() => {});
+    } catch (e) {
+      await sendMessage(`Error: ${e.message}`).catch(() => {});
+    }
+    return;
+  }
+
   if (text === "/candidates") {
     await sendMessage(describeLatestCandidates(5)).catch(() => {});
     return;
@@ -1810,10 +1923,10 @@ async function telegramHandler(msg) {
   if (deployMatch) {
     try {
       const idx = parseInt(deployMatch[1]) - 1;
-      const { candidate, result, deployAmount, binsBelow } = await deployLatestCandidate(idx);
+      const { candidate, result, deployAmount } = await deployLatestCandidate(idx);
       const coverage = result.range_coverage
         ? `Range: ${fmtPct(result.range_coverage.downside_pct)} downside | ${fmtPct(result.range_coverage.upside_pct)} upside`
-        : `Strategy: ${config.strategy.strategy} | binsBelow: ${binsBelow}`;
+        : `Strategy: ${config.strategy.strategy} | range: ${config.strategy.defaultDownsidePct ?? 60}% / ${config.strategy.defaultUpsidePct ?? 0}%`;
       await sendMessage([
         `✅ Deployed ${candidate.name}`,
         `Pool: ${candidate.pool}`,
@@ -2117,6 +2230,23 @@ Commands:
       }
       console.log();
       rl.prompt();
+      return;
+    }
+
+    if (input === "/addsw") {
+      await runBusy(async () => {
+        console.log("\nFetching candidates and studying top LPers...\n");
+        const result = await executeTool("add_top_lpers_from_candidates", { limit: 10, lperLimit: 4 });
+        const added = result?.added?.length ?? 0;
+        const skipped = result?.skipped?.length ?? 0;
+        const total = result?.totalLPersFound ?? 0;
+        console.log(`Added: ${added} | Skipped (dupes): ${skipped} | Total LPers found: ${total}`);
+        if (result?.added?.length) {
+          console.log("\nAdded wallets:");
+          for (const w of result.added) console.log(`  • ${w.name} (${w.address})`);
+        }
+        console.log();
+      });
       return;
     }
 

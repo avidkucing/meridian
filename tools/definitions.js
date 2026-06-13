@@ -1,3 +1,5 @@
+import { config } from "../config.js";
+
 export const tools = [
   // ═══════════════════════════════════════════
   //  SCREENING TOOLS
@@ -135,15 +137,14 @@ PRIORITY ORDER for strategy and bins:
 
 HARD RULES:
 - Never use 'curve'.
-- Bin Step: Only deploy in pools with bin_step between 80 and 125.
-- Range: Never deploy a tiny range. Total bins must be at least the configured minimum, with a hard floor of 35 bins.
-- For single-side SOL deploys (amount_y only, amount_x=0), do not request upside exposure:
-  use bins_below only, keep bins_above=0, and the upper bin will be pinned to the current active bin.
+- Bin Step: Only deploy in pools with bin_step between ${config.screening.minBinStep} and ${config.screening.maxBinStep}.
+- Range: Always use downside_pct and upside_pct to set the range — do not pass bins_below or bins_above.
+- Single-side SOL deploys (amount_y only, amount_x=0): set upside_pct=0; the range will only extend below.
+- The system prompt specifies the exact downside_pct and upside_pct values to use — use those values exactly.
 
 Guidelines (only when user hasn't specified):
-- Strategy: omit the strategy field — the system will use the configured default from config.strategy.strategy
-- Bins: choose from configured minBinsBelow/maxBinsBelow by positive volatility. The hard lower floor is 35 bins.
-- Deposit: single-sided SOL only: set amount_y/amount_sol, keep amount_x=0.
+- Strategy: use the active strategy's lp_strategy field (bid_ask or spot)
+- Deposit: single-sided SOL only. Use amount_y/amount_sol and keep amount_x=0.
 
 WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
       parameters: {
@@ -170,24 +171,15 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
             enum: ["bid_ask", "spot"],
             description: "DLMM strategy type. If user specifies, use exactly what they said. Otherwise omit — the system default from config.strategy.strategy will be used automatically."
           },
-          bins_below: {
-            type: "number",
-            description: "Number of bins below the current active bin. For single-side SOL deploys, this is the main range input: lower bin = active bin - bins_below, upper bin = active bin."
-          },
-          bins_above: {
-            type: "number",
-            description: "Number of bins above the current active bin. Keep this at 0 for single-side SOL deploys. Only use this for dual-sided or explicit upside-exposure deploys."
-          },
           downside_pct: {
             type: "number",
-            description: "Optional human-friendly downside range in percent below the current active price. Converted to bins internally via the Meteora SDK."
+            description: "Downside range as a percent below the current active price. PRIMARY range input — always use this instead of bins_below. Converted to bins internally."
           },
           upside_pct: {
             type: "number",
-            description: "Optional human-friendly upside range in percent above the current active price. Do not use this for single-side SOL deploys."
+            description: "Upside range as a percent above the current active price. Set to 0 for single-side SOL deploys. PRIMARY range input — always use this instead of bins_above."
           },
           pool_name: { type: "string", description: "Human-readable pool name for record-keeping" },
-          base_mint: { type: "string", description: "Base token mint address — used to prevent duplicate token exposure across pools" },
           bin_step: { type: "number", description: "Pool bin step (from discover_pools)" },
           base_fee: { type: "number", description: "Pool base fee percentage (from discover_pools)" },
           volatility: { type: "number", description: "Pool volatility at deploy time, sourced from max(screening timeframe, 30m)" },

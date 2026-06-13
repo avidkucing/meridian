@@ -157,7 +157,7 @@ export function recordPoolDeploy(poolAddress, deployData) {
     ) / 100;
     entry.win_rate = Math.round(
       (withPnl.filter((d) => d.pnl_pct >= 0).length / withPnl.length) * 100
-    ) / 100;
+    );
   }
   const adjusted = withPnl.filter((d) => !isAdjustedWinRateExcludedReason(d.close_reason));
   entry.adjusted_win_rate_sample_count = adjusted.length;
@@ -167,13 +167,6 @@ export function recordPoolDeploy(poolAddress, deployData) {
 
   if (deployData.base_mint && !entry.base_mint) {
     entry.base_mint = deployData.base_mint;
-  }
-
-  // Set cooldown for low yield closes — pool wasn't profitable enough, don't redeploy soon
-  if (deploy.close_reason === "low yield") {
-    const cooldownHours = 4;
-    const cooldownUntil = setPoolCooldown(entry, cooldownHours, "low yield");
-    log("pool-memory", `Cooldown set for ${entry.name} until ${cooldownUntil} (low yield close)`);
   }
 
   const oorTriggerCount = config.management.oorCooldownTriggerCount ?? 3;
@@ -317,6 +310,7 @@ export function recordPositionSnapshot(poolAddress, snapshot) {
     pnl_pct: snapshot.pnl_pct ?? null,
     pnl_usd: snapshot.pnl_usd ?? null,
     in_range: snapshot.in_range ?? null,
+    active_bin: snapshot.active_bin ?? null,
     unclaimed_fees_usd: snapshot.unclaimed_fees_usd ?? null,
     minutes_out_of_range: snapshot.minutes_out_of_range ?? null,
     age_minutes: snapshot.age_minutes ?? null,
@@ -335,10 +329,10 @@ export function recordPositionSnapshot(poolAddress, snapshot) {
  * Returns a short formatted string ready for injection into the agent goal.
  */
 export function recallForPool(poolAddress) {
-  if (!poolAddress) return null;
+  if (!poolAddress) return "";
   const db = load();
   const entry = db[poolAddress];
-  if (!entry) return null;
+  if (!entry) return "";
 
   const lines = [];
 

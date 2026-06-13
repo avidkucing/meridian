@@ -55,6 +55,7 @@ function evaluatePreset(side, preset, payload) {
   const summary = buildSignalSummary(payload);
   const oversold = Number(config.indicators.rsiOversold ?? 30);
   const overbought = Number(config.indicators.rsiOverbought ?? 80);
+  const rsiFloor = Number(config.indicators.rsiFloor ?? 16);
   const close = summary.close;
   const previousClose = summary.previousClose;
   const lowerBand = summary.lowerBand;
@@ -146,6 +147,25 @@ function evaluatePreset(side, preset, payload) {
             reason: "Supertrend bearish confirmation or RSI overbought",
             signal: summary,
           };
+    case "supertrend_or_momentum":
+      return side === "entry"
+        ? {
+            confirmed:
+              summary.supertrendBreakUp ||
+              ((isBullish || !isBearish) && close != null && summary.supertrendValue != null && close >= summary.supertrendValue) ||
+              (rsi != null && rsi > Number(config.indicators.rsiMomentum ?? 55)),
+            reason: isBullish
+              ? "Bullish Supertrend confirmed"
+              : `RSI ${rsi ?? "n/a"} > momentum threshold ${config.indicators.rsiMomentum ?? 55}`,
+            signal: summary,
+          }
+        : {
+            confirmed:
+              summary.supertrendBreakDown ||
+              (isBearish && close != null && summary.supertrendValue != null && close <= summary.supertrendValue),
+            reason: "Supertrend turned bearish",
+            signal: summary,
+          };
     case "bb_plus_rsi":
       return side === "entry"
         ? {
@@ -202,6 +222,52 @@ function evaluatePreset(side, preset, payload) {
             reason: "Price rejected below a key Fibonacci level",
             signal: summary,
           };
+    case "dip_entry":
+      // Enter when ST is bearish OR RSI is above the floor (>= rsiFloor, default 16).
+      // Blocks freefall entries: ST bullish + RSI < floor = token in freefall, not a dip.
+      // Exit when price recovers: ST flips bullish or RSI reaches overbought.
+      return side === "entry"
+        ? {
+            confirmed:
+              isBearish ||
+              summary.supertrendBreakDown ||
+              (rsi != null && rsi >= rsiFloor),
+            reason:
+              isBearish || summary.supertrendBreakDown
+                ? `Supertrend bearish — entering on correction`
+                : `RSI ${rsi?.toFixed(1)} >= floor ${rsiFloor} — not in freefall`,
+            signal: summary,
+          }
+        : {
+            confirmed:
+              summary.supertrendBreakUp ||
+              (isBullish && close != null && summary.supertrendValue != null && close >= summary.supertrendValue) ||
+              (rsi != null && rsi >= overbought),
+            reason: summary.supertrendBreakUp
+              ? "Supertrend flipped bullish — exit dip position"
+              : `RSI ${rsi?.toFixed(1)} >= overbought ${overbought} — recovery complete`,
+            signal: summary,
+          };
+    case "pump_retrace":
+      // Enter when price is extended/overbought — expecting retrace back into range.
+      // Designed for single-sided SOL (bins_above=0) where bins sit below current price.
+      return side === "entry"
+        ? {
+            confirmed:
+              (isBearish || summary.supertrendBreakDown) ||
+              (rsi != null && rsi >= overbought),
+            reason: isBearish || summary.supertrendBreakDown
+              ? "Supertrend bearish — price cooling from pump"
+              : `RSI ${rsi ?? "n/a"} >= overbought ${overbought}`,
+            signal: summary,
+          }
+        : {
+            confirmed:
+              summary.supertrendBreakUp ||
+              (isBullish && close != null && summary.supertrendValue != null && close >= summary.supertrendValue),
+            reason: "Supertrend flipped bullish — exit retrace position",
+            signal: summary,
+          };
     default:
       return {
         confirmed: false,
@@ -209,6 +275,122 @@ function evaluatePreset(side, preset, payload) {
         signal: summary,
       };
   }
+}
+
+const METEORA_OHLCV_BASE = "https://dlmm.datapi.meteora.ag/pools";
+
+/**
+ * Check whether the current price has dipped at least minDipPct% below
+ * the highest close seen in the last dipLookbackCandles × 5-minute candles.
+ *
+ * Used as a pre-deploy gate: only enter when the token has genuinely pulled
+ * back from a recent high, not at the peak.
+ *
+ * @param {string} poolAddress  - Meteora pool address
+ * @param {object} opts
+ * @param {number} opts.minDipPct           - Required % drop from high (default 10)
+ * @param {number} opts.dipLookbackCandles  - Candles to look back for the high (default 20)
+ * @returns {{ confirmed, dropPct, recentHigh, currentClose, nCandles, reason }}
+ */
+/**
+ * Block entry when the last completed 5m candle is a small bearish candle
+ * AND the 1h price change is in the "moderate pump" range (default 0–30%).
+ *
+ * Pattern: token pumped moderately but the last bar is flat/red → momentum
+ * already faded, likely entering at a stale top.
+ *
+ * endTs is snapped to the 5m candle boundary so the fetch result is stable
+ * across multiple screening runs within the same candle window (cache-friendly).
+ *
+ * @param {string} poolAddress
+ * @param {number} p1hPct        - price_change_1h from signal snapshot (%)
+ * @param {object} opts
+ * @param {number} opts.maxBodyPct - max candle body % to qualify as "small" (default 3)
+ * @param {number} opts.p1hMin     - lower p1h bound to apply filter (default 0)
+ * @param {number} opts.p1hMax     - upper p1h bound to apply filter (default 30)
+ * @returns {{ confirmed, reason, bodyPct, direction }}
+ */
+export async function checkLastCandleMomentum(poolAddress, p1hPct, {
+  maxBodyPct = 3,
+  p1hMin     = 0,
+  p1hMax     = 30,
+} = {}) {
+  const p1h = parseFloat(p1hPct) || 0;
+  if (p1h <= p1hMin || p1h >= p1hMax) {
+    return { confirmed: true, reason: `p1h ${p1h.toFixed(1)}% outside filter range (${p1hMin}–${p1hMax}%)` };
+  }
+
+  // Snap to 5m candle grid — stable cache key within the same candle window
+  const nowSec  = Math.floor(Date.now() / 1000);
+  const endTs   = Math.floor(nowSec / 300) * 300;
+  const startTs = endTs - 6 * 300;
+
+  const url = `${METEORA_OHLCV_BASE}/${poolAddress}/ohlcv?timeframe=5m&start_time=${startTs}&end_time=${endTs}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`OHLCV fetch ${res.status} for pool ${poolAddress.slice(0, 8)}`);
+
+  const json    = await res.json();
+  const candles = (json.data ?? []).filter(c => c?.open > 0 && c?.close > 0);
+  if (!candles.length) throw new Error(`No candles for momentum check on ${poolAddress.slice(0, 8)}`);
+
+  const last      = candles[candles.length - 1];
+  const bodyPct   = Math.abs(last.close - last.open) / last.open * 100;
+  const isNotBull = !(last.close > last.open); // flat or bearish — matches historical analysis
+  const dir       = last.close > last.open ? "bullish" : last.close < last.open ? "bearish" : "flat";
+
+  if (isNotBull && bodyPct < maxBodyPct) {
+    return {
+      confirmed: false,
+      reason:    `last candle ${dir} ${bodyPct.toFixed(2)}% body with p1h ${p1h.toFixed(1)}% — stale pump, no momentum`,
+      bodyPct,
+      direction: dir,
+    };
+  }
+
+  return {
+    confirmed: true,
+    reason:    `last candle ${dir} ${bodyPct.toFixed(2)}% body — momentum ok`,
+    bodyPct,
+    direction: dir,
+  };
+}
+
+export async function checkDipFromHigh(poolAddress, {
+  minDipPct          = 25,
+  dipLookbackCandles = 36,
+} = {}) {
+  if (!minDipPct || minDipPct <= 0) {
+    return { confirmed: true, reason: "Dip check disabled (minDipPct=0)", dropPct: null };
+  }
+
+  // Fetch enough candles: request 1.5× the lookback window to account for gaps
+  const endTs   = Math.floor(Date.now() / 1000);
+  const startTs = endTs - Math.ceil(dipLookbackCandles * 5 * 60 * 1.5);
+  const url     = `${METEORA_OHLCV_BASE}/${poolAddress}/ohlcv?timeframe=5m&start_time=${startTs}&end_time=${endTs}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`OHLCV fetch ${res.status} for pool ${poolAddress.slice(0, 8)}`);
+
+  const json    = await res.json();
+  const candles = (json.data ?? []).filter(c => c?.close > 0);
+  if (candles.length < 2) throw new Error(`Too few candles (${candles.length}) for dip check`);
+
+  const recent       = candles.slice(-dipLookbackCandles);
+  const currentClose = recent[recent.length - 1].close;
+  const recentHigh   = Math.max(...recent.map(c => c.high ?? c.close));
+  const dropPct      = (currentClose - recentHigh) / recentHigh * 100; // negative = below high
+
+  const confirmed = dropPct <= -minDipPct;
+  return {
+    confirmed,
+    dropPct:      +dropPct.toFixed(2),
+    recentHigh,
+    currentClose,
+    nCandles:     recent.length,
+    reason: confirmed
+      ? `Price is ${Math.abs(dropPct).toFixed(1)}% below ${recent.length}-candle high ✓ (need ≥${minDipPct}%)`
+      : `Price is only ${Math.abs(dropPct).toFixed(1)}% below ${recent.length}-candle high — need ≥${minDipPct}% dip before entering`,
+  };
 }
 
 export async function fetchChartIndicatorsForMint(
@@ -250,8 +432,10 @@ export async function confirmIndicatorPreset({
   preset = side === "entry" ? config.indicators.entryPreset : config.indicators.exitPreset,
   intervals = config.indicators.intervals,
   refresh = false,
+  enabled = config.indicators.enabled,
+  requireAllIntervals = config.indicators.requireAllIntervals,
 } = {}) {
-  if (!config.indicators.enabled || !mint || !preset) {
+  if (!enabled || !mint || !preset) {
     return { enabled: false, confirmed: true, reason: "Indicators disabled or not configured", intervals: [] };
   }
 
@@ -299,7 +483,7 @@ export async function confirmIndicatorPreset({
     };
   }
 
-  const requireAll = !!config.indicators.requireAllIntervals;
+  const requireAll = !!requireAllIntervals;
   const confirmed = requireAll
     ? successful.every((entry) => entry.confirmed)
     : successful.some((entry) => entry.confirmed);
