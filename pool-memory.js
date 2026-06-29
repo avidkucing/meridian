@@ -10,6 +10,7 @@ import { log } from "./logger.js";
 import { config } from "./config.js";
 
 import { repoPath } from "./repo-root.js";
+import { appendSnapshot } from "./position-memory.js";
 
 const POOL_MEMORY_FILE = repoPath("pool-memory.json");
 const MAX_NOTE_LENGTH = 280;
@@ -322,6 +323,11 @@ export function recordPositionSnapshot(poolAddress, snapshot) {
   }
 
   save(db);
+
+  // Also append to position-memory.json (per-position, uncapped snapshots)
+  if (snapshot.position) {
+    appendSnapshot(snapshot.position, snapshot);
+  }
 }
 
 /**

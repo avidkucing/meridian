@@ -26,6 +26,7 @@ import {
   syncOpenPositions,
 } from "../state.js";
 import { recordPerformance } from "../lessons.js";
+import { recordPositionEntry, recordPositionExit } from "../position-memory.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
 import { normalizeMint, swapToken } from "./wallet.js";
 import { appendDecision } from "../decision-log.js";
@@ -46,6 +47,19 @@ let _deriveBinArrayBitmapExtension = null;
 let _isOverflowDefaultBinArrayBitmap = null;
 let _BIN_ARRAY_FEE = null;
 let _BIN_ARRAY_BITMAP_FEE = null;
+let _Zap = null;
+let _getJupiterQuote = null;
+let _DlmmDirectSwapQuoteRoute = null;
+let _DlmmSwapType = null;
+let _getTokenProgramFromMint = null;
+let _getOrCreateATAInstruction = null;
+let _getTokenAccountBalance = null;
+let _getLbPairState = null;
+let _getDlmmRemainingAccounts = null;
+let _createDlmmSwapPayload = null;
+let _unwrapSOLInstruction = null;
+let _DLMM_PROGRAM_ID = null;
+let _AMOUNT_IN_DLMM_OFFSET = null;
 
 async function getDLMM() {
   if (!_DLMM) {
@@ -72,6 +86,40 @@ async function getDLMM() {
     isOverflowDefaultBinArrayBitmap: _isOverflowDefaultBinArrayBitmap,
     BIN_ARRAY_FEE: _BIN_ARRAY_FEE,
     BIN_ARRAY_BITMAP_FEE: _BIN_ARRAY_BITMAP_FEE,
+  };
+}
+
+async function getZapSDK() {
+  if (!_Zap || !_getJupiterQuote || !_DlmmDirectSwapQuoteRoute || !_DlmmSwapType || !_getTokenProgramFromMint || !_getOrCreateATAInstruction || !_getTokenAccountBalance || !_getLbPairState || !_getDlmmRemainingAccounts || !_createDlmmSwapPayload || !_unwrapSOLInstruction || !_DLMM_PROGRAM_ID || _AMOUNT_IN_DLMM_OFFSET == null) {
+    const mod = await import("@meteora-ag/zap-sdk");
+    _Zap = mod.Zap;
+    _getJupiterQuote = mod.getJupiterQuote;
+    _DlmmDirectSwapQuoteRoute = mod.DlmmDirectSwapQuoteRoute;
+    _DlmmSwapType = mod.DlmmSwapType;
+    _getTokenProgramFromMint = mod.getTokenProgramFromMint;
+    _getOrCreateATAInstruction = mod.getOrCreateATAInstruction;
+    _getTokenAccountBalance = mod.getTokenAccountBalance;
+    _getLbPairState = mod.getLbPairState;
+    _getDlmmRemainingAccounts = mod.getDlmmRemainingAccounts;
+    _createDlmmSwapPayload = mod.createDlmmSwapPayload;
+    _unwrapSOLInstruction = mod.unwrapSOLInstruction;
+    _DLMM_PROGRAM_ID = mod.DLMM_PROGRAM_ID;
+    _AMOUNT_IN_DLMM_OFFSET = mod.AMOUNT_IN_DLMM_OFFSET;
+  }
+  return {
+    Zap: _Zap,
+    getJupiterQuote: _getJupiterQuote,
+    DlmmDirectSwapQuoteRoute: _DlmmDirectSwapQuoteRoute,
+    DlmmSwapType: _DlmmSwapType,
+    getTokenProgramFromMint: _getTokenProgramFromMint,
+    getOrCreateATAInstruction: _getOrCreateATAInstruction,
+    getTokenAccountBalance: _getTokenAccountBalance,
+    getLbPairState: _getLbPairState,
+    getDlmmRemainingAccounts: _getDlmmRemainingAccounts,
+    createDlmmSwapPayload: _createDlmmSwapPayload,
+    unwrapSOLInstruction: _unwrapSOLInstruction,
+    DLMM_PROGRAM_ID: _DLMM_PROGRAM_ID,
+    AMOUNT_IN_DLMM_OFFSET: _AMOUNT_IN_DLMM_OFFSET,
   };
 }
 
@@ -118,6 +166,49 @@ function shouldUseLpAgentRelay() {
 function shouldUseLpAgentRelayForDeploy() {
   return false;
 }
+
+const METEORA_ZAP_MAX_RANGE_BINS = 69;
+
+function getLiquidityDivider({ downsidePct, upsidePct, activeBinsAbove, totalBins }) {
+  const down = Math.max(0, Number(downsidePct ?? 0));
+  const up = Math.max(0, Number(upsidePct ?? 0));
+  if (up <= 0) return { xShare: 0, yShare: 1, source: "pct" };
+  const pctTotal = down + up;
+  if (pctTotal > 0) {
+    const xShare = up / pctTotal;
+    return { xShare, yShare: 1 - xShare, source: "pct" };
+  }
+  const binTotal = Math.max(1, Number(totalBins || 0));
+  const xShare = Math.max(0, Number(activeBinsAbove || 0)) / binTotal;
+  return { xShare, yShare: 1 - xShare, source: "bins" };
+}
+
+function capZapRangeToDivider({ activeBinsBelow, activeBinsAbove, downsidePct, upsidePct, totalBins }) {
+  if (totalBins <= METEORA_ZAP_MAX_RANGE_BINS || activeBinsAbove <= 0) {
+    return { activeBinsBelow, activeBinsAbove, totalBins, capped: false };
+  }
+
+  const divider = getLiquidityDivider({ downsidePct, upsidePct, activeBinsAbove, totalBins });
+  let cappedAbove = Math.round(METEORA_ZAP_MAX_RANGE_BINS * divider.xShare);
+  cappedAbove = Math.max(1, Math.min(METEORA_ZAP_MAX_RANGE_BINS - MIN_SAFE_BINS_BELOW, cappedAbove));
+  const cappedBelow = METEORA_ZAP_MAX_RANGE_BINS - cappedAbove;
+  return {
+    activeBinsBelow: cappedBelow,
+    activeBinsAbove: cappedAbove,
+    totalBins: METEORA_ZAP_MAX_RANGE_BINS,
+    capped: true,
+    divider,
+  };
+}
+
+function shouldUseMeteoraZapForDeploy({ activeBinsAbove, finalAmountX, isWideRange }) {
+  return !!config.api.meteoraZapEnabled &&
+    !shouldUseLpAgentRelayForDeploy() &&
+    !isWideRange &&
+    Number(activeBinsAbove) > 0 &&
+    Number(finalAmountX || 0) === 0;
+}
+
 
 function shouldUseLpAgentRelayForClose() {
   return false; // relay zap-out consistently embeds SOL transfers that trip the safety check
@@ -535,6 +626,25 @@ function assertNoInitializeBinArrayInstructions(serializedTxs) {
   }
 }
 
+function assertNoInitializeBinArrayTransaction(tx) {
+  const offenders = [];
+  for (const ix of getTransactionInstructions(tx)) {
+    if (!ix.programId.equals(getDlmmProgramId())) continue;
+    const discriminator = Buffer.from(ix.data || []).subarray(0, 8).toString("hex");
+    if (discriminator === METEORA_INIT_BIN_ARRAY_DISCRIMINATOR) {
+      offenders.push("initializeBinArray");
+    } else if (discriminator === METEORA_INIT_BITMAP_EXTENSION_DISCRIMINATOR) {
+      offenders.push("initializeBinArrayBitmapExtension");
+    }
+  }
+  if (offenders.length > 0) {
+    throw new Error(
+      `Deploy skipped: generated transaction includes Meteora ${[...new Set(offenders)].join(" / ")} ` +
+      "instruction(s), which would charge non-refundable pool initialization rent.",
+    );
+  }
+}
+
 function getDlmmInstructionDiscriminators(serialized) {
   const bytes = Buffer.from(serialized, "base64");
   const dlmmProgramId = getDlmmProgramId().toString();
@@ -553,6 +663,255 @@ function getDlmmInstructionDiscriminators(serialized) {
       .map((ix) => ix.programId.toString() === dlmmProgramId ? Buffer.from(ix.data || []).subarray(0, 8).toString("hex") : null)
       .filter(Boolean);
   }
+}
+
+function prependComputeBudget(tx, { units = 600_000, microLamports = 0 } = {}) {
+  if (!tx || tx.instructions.length === 0) return tx;
+  const existingComputeBudget = tx.instructions.some((ix) => ix.programId.equals(ComputeBudgetProgram.programId));
+  if (existingComputeBudget) return tx;
+  const instructions = [ComputeBudgetProgram.setComputeUnitLimit({ units })];
+  if (microLamports > 0) {
+    instructions.push(ComputeBudgetProgram.setComputeUnitPrice({ microLamports }));
+  }
+  tx.instructions.unshift(...instructions);
+  return tx;
+}
+
+async function sendZapTransaction(tx, signers, label, txHashes) {
+  if (!tx || tx.instructions.length === 0) return;
+  assertNoInitializeBinArrayTransaction(tx);
+  const txHash = await sendAndConfirmTransaction(getConnection(), tx, signers);
+  txHashes.push(txHash);
+  log("deploy", `Meteora Zap ${label}: ${txHash}`);
+}
+
+async function executeMeteoraZapDeploy({
+  wallet,
+  newPosition,
+  poolAddress,
+  pool,
+  activeBinId,
+  minBinId,
+  maxBinId,
+  strategyType,
+  finalAmountY,
+  liquidityXShare,
+}) {
+  const tokenYMint = pool.lbPair.tokenYMint;
+  if (tokenYMint.toString() !== config.tokens.SOL) {
+    throw new Error("Meteora Zap deploy currently supports SOL as token Y only.");
+  }
+
+  const { Zap, getJupiterQuote, DlmmDirectSwapQuoteRoute, DlmmSwapType } = await getZapSDK();
+  const lbPair = new PublicKey(poolAddress);
+  const amountIn = new BN(Math.floor(finalAmountY * 1e9).toString());
+  const minDeltaId = minBinId - activeBinId;
+  const maxDeltaId = maxBinId - activeBinId;
+  const swapSlippageBps = 500;
+  const maxAccounts = 48;
+  const maxTransferAmountExtendPercentage = 10;
+  const maxActiveBinSlippage = 10;
+  const zapConfig = {
+    jupiterApiUrl: "https://api.jup.ag",
+    jupiterApiKey: config.jupiter?.apiKey || process.env.JUPITER_API_KEY || "",
+  };
+  const xShareBps = Math.max(1, Math.min(9999, Math.round(Number(liquidityXShare || 0) * 10_000)));
+  const swapAmount = amountIn.mul(new BN(xShareBps)).div(new BN(10_000));
+  if (swapAmount.lte(new BN(0)) || swapAmount.gte(amountIn)) {
+    throw new Error("Invalid Meteora Zap liquidity divider; token-X share must be between 0% and 100%.");
+  }
+
+  log(
+    "deploy",
+    `Meteora Zap enabled: zapping ${finalAmountY} SOL into DLMM range ${minBinId}->${maxBinId}; ` +
+      `converting ${(xShareBps / 100).toFixed(2)}% to token X`,
+  );
+
+  const jupiterQuote = await getJupiterQuote(
+    tokenYMint,
+    pool.lbPair.tokenXMint,
+    swapAmount,
+    maxAccounts,
+    swapSlippageBps,
+    false,
+    true,
+    true,
+    zapConfig,
+  );
+  if (!jupiterQuote?.outAmount) {
+    throw new Error("Meteora Zap failed to quote the configured SOL -> token X divider swap.");
+  }
+
+  const quoteOutAmount = new BN(String(jupiterQuote.outAmount));
+  const directSwapEstimate = {
+    swapType: DlmmSwapType.YToX,
+    swapAmount,
+    expectedOutput: quoteOutAmount,
+    postSwapX: quoteOutAmount,
+    postSwapY: amountIn.sub(swapAmount),
+    quote: {
+      inAmount: new BN(String(jupiterQuote.inAmount || swapAmount.toString())),
+      outAmount: quoteOutAmount,
+      route: DlmmDirectSwapQuoteRoute.Jupiter,
+      originalQuote: jupiterQuote,
+    },
+  };
+
+  const zap = new Zap(getConnection(), zapConfig);
+  const zapParams = await zap.getZapInDlmmDirectParams({
+    user: wallet.publicKey,
+    lbPair,
+    inputTokenMint: tokenYMint,
+    amountIn,
+    maxActiveBinSlippage,
+    minDeltaId,
+    maxDeltaId,
+    strategy: strategyType,
+    favorXInActiveId: true,
+    maxAccounts,
+    swapSlippageBps,
+    maxTransferAmountExtendPercentage,
+    directSwapEstimate,
+  });
+  const txs = await zap.buildZapInDlmmTransaction({
+    ...zapParams,
+    position: newPosition.publicKey,
+  });
+
+  const txHashes = [];
+  await sendZapTransaction(txs.setupTransaction, [wallet], "setup", txHashes);
+  for (const [index, swapTx] of txs.swapTransactions.entries()) {
+    await sendZapTransaction(swapTx, [wallet], `swap ${index + 1}/${txs.swapTransactions.length}`, txHashes);
+  }
+  await sendZapTransaction(txs.ledgerTransaction, [wallet], "ledger", txHashes);
+  prependComputeBudget(txs.zapInTransaction, { units: 600_000 });
+  await sendZapTransaction(txs.zapInTransaction, [wallet, newPosition], "add liquidity", txHashes);
+  await sendZapTransaction(txs.cleanUpTransaction, [wallet], "cleanup", txHashes);
+
+  return txHashes;
+}
+
+async function executeMeteoraAtomicZapOutClose({
+  wallet,
+  poolAddress,
+  pool,
+  positionPubKey,
+  positionData,
+  fromBinId,
+  toBinId,
+}) {
+  if (!config.api.meteoraZapEnabled) return null;
+
+  const inputMint = pool.lbPair.tokenXMint.toString();
+  const outputMint = pool.lbPair.tokenYMint.toString();
+  if (!inputMint || inputMint === outputMint) return null;
+  if (outputMint !== config.tokens.SOL) return null;
+
+  const estimatedInput = new BN(String(positionData?.totalXAmount || "0"))
+    .add(new BN(String(positionData?.feeX?.toString?.() || "0")));
+  if (estimatedInput.lte(new BN(0))) return null;
+
+  const { DLMM } = await getDLMM();
+  const {
+    Zap,
+    getTokenProgramFromMint,
+    getOrCreateATAInstruction,
+    getTokenAccountBalance,
+    getLbPairState,
+    getDlmmRemainingAccounts,
+    createDlmmSwapPayload,
+    unwrapSOLInstruction,
+    DLMM_PROGRAM_ID,
+    AMOUNT_IN_DLMM_OFFSET,
+  } = await getZapSDK();
+
+  const connection = getConnection();
+  const user = wallet.publicKey;
+  const lbPairAddress = new PublicKey(poolAddress);
+  const zapPool = await DLMM.create(connection, lbPairAddress, { skipSolWrappingOperation: true });
+  const inputMintPk = zapPool.lbPair.tokenXMint;
+  const outputMintPk = zapPool.lbPair.tokenYMint;
+  const [inputTokenProgram, outputTokenProgram] = await Promise.all([
+    getTokenProgramFromMint(connection, inputMintPk),
+    getTokenProgramFromMint(connection, outputMintPk),
+  ]);
+
+  const [inputAta, outputAta] = await Promise.all([
+    getOrCreateATAInstruction(connection, inputMintPk, user, user, true, inputTokenProgram),
+    getOrCreateATAInstruction(connection, outputMintPk, user, user, true, outputTokenProgram),
+  ]);
+
+  const preInstructions = [];
+  if (inputAta.ix) preInstructions.push(inputAta.ix);
+  if (outputAta.ix) preInstructions.push(outputAta.ix);
+  log(
+    "close",
+    `Meteora atomic zap-out accounts: in ${inputMint.slice(0, 8)}=${inputAta.ataPubkey.toString().slice(0, 8)} out ${outputMint.slice(0, 8)}=${outputAta.ataPubkey.toString().slice(0, 8)}`,
+  );
+
+  const setupTxHashes = [];
+  const preUserTokenBalance = await getTokenAccountBalance(connection, inputAta.ataPubkey).catch(() => "0");
+  const closeTxs = await zapPool.removeLiquidity({
+    user,
+    position: positionPubKey,
+    fromBinId,
+    toBinId,
+    bps: new BN(10000),
+    shouldClaimAndClose: true,
+    skipUnwrapSOL: true,
+  });
+  const closeTxArray = Array.isArray(closeTxs) ? closeTxs : [closeTxs];
+  if (closeTxArray.length !== 1) {
+    throw new Error("Meteora atomic zap-out only supports single-transaction close; falling back.");
+  }
+  preInstructions.push(...closeTxArray[0].instructions);
+
+  const binArrays = await zapPool.getBinArrayForSwap(true);
+  const quote = zapPool.swapQuote(estimatedInput, true, new BN(500), binArrays, true);
+  if (!quote?.minOutAmount || new BN(String(quote.minOutAmount)).lte(new BN(0))) {
+    throw new Error("Meteora atomic zap-out could not quote a positive token X -> token Y output.");
+  }
+
+  const lbPairState = await getLbPairState(connection, lbPairAddress);
+  const { remainingAccounts, remainingAccountsInfo } = await getDlmmRemainingAccounts(
+    connection,
+    lbPairAddress,
+    user,
+    inputAta.ataPubkey,
+    outputAta.ataPubkey,
+    inputTokenProgram,
+    outputTokenProgram,
+    lbPairState,
+  );
+  const payloadData = createDlmmSwapPayload(estimatedInput, new BN(String(quote.minOutAmount)), remainingAccountsInfo);
+  const postInstructions = [];
+  if (outputMint === config.tokens.SOL) {
+    const unwrapIx = unwrapSOLInstruction(user, user);
+    if (unwrapIx) postInstructions.push(unwrapIx);
+  }
+
+  const zap = new Zap(connection, {
+    jupiterApiUrl: "https://api.jup.ag",
+    jupiterApiKey: config.jupiter?.apiKey || process.env.JUPITER_API_KEY || "",
+  });
+  const tx = await zap.zapOut({
+    userTokenInAccount: inputAta.ataPubkey,
+    zapOutParams: {
+      percentage: 100,
+      offsetAmountIn: AMOUNT_IN_DLMM_OFFSET,
+      preUserTokenBalance: new BN(String(preUserTokenBalance || "0")),
+      maxSwapAmount: estimatedInput,
+      payloadData,
+    },
+    remainingAccounts,
+    ammProgram: DLMM_PROGRAM_ID,
+    preInstructions,
+    postInstructions,
+  });
+  prependComputeBudget(tx, { units: 800_000 });
+  const txHash = await sendAndConfirmTransaction(connection, tx, [wallet]);
+  log("close", "Meteora atomic zap-out close " + inputMint.slice(0, 8) + " -> " + outputMint.slice(0, 8) + ": " + txHash);
+  return { tx: txHash, setup_txs: setupTxHashes, amount_in: estimatedInput.toString() };
 }
 
 // ─── Pool Cache ────────────────────────────────────────────────
@@ -827,6 +1186,34 @@ export async function deployPosition({
     throw new Error(`Invalid strategy: ${activeStrategy}. Use spot, curve, or bid_ask.`);
   }
 
+  const zapRangeEligible = !!config.api.meteoraZapEnabled && finalAmountX === 0 && activeBinsAbove > 0;
+  if (zapRangeEligible && totalBins > METEORA_ZAP_MAX_RANGE_BINS) {
+    const capped = capZapRangeToDivider({
+      activeBinsBelow,
+      activeBinsAbove,
+      downsidePct: downside_pct,
+      upsidePct: upside_pct,
+      totalBins,
+    });
+    if (capped.capped) {
+      log(
+        "deploy",
+        `Meteora Zap range capped to ${METEORA_ZAP_MAX_RANGE_BINS} bins by divider: ` +
+          `bins_below ${activeBinsBelow}->${capped.activeBinsBelow}, bins_above ${activeBinsAbove}->${capped.activeBinsAbove}`,
+      );
+      activeBinsBelow = capped.activeBinsBelow;
+      activeBinsAbove = capped.activeBinsAbove;
+      totalBins = capped.totalBins;
+    }
+  }
+
+  let liquidityDivider = getLiquidityDivider({
+    downsidePct: downside_pct,
+    upsidePct: upside_pct,
+    activeBinsAbove,
+    totalBins,
+  });
+
   if (process.env.DRY_RUN === "true") {
     return {
       dry_run: true,
@@ -839,6 +1226,11 @@ export async function deployPosition({
         upside_pct: upside_pct ?? null,
         amount_x: finalAmountX,
         amount_y: finalAmountY,
+        liquidity_divider: {
+          source: liquidityDivider.source,
+          sol_share: liquidityDivider.yShare,
+          token_x_share: liquidityDivider.xShare,
+        },
         wide_range: totalBins > 69,
       },
       message: "DRY RUN — no transaction sent",
@@ -876,9 +1268,16 @@ export async function deployPosition({
   const actualBaseFee = base_fee ?? (baseFactor > 0 ? parseFloat((baseFactor * actualBinStep / 1e6 * 100).toFixed(4)) : null);
 
   // For bins_above > 0, we need token X for the upper bins.
-  // Relay path: pass percentX and let the relay swap internally.
-  // Non-relay path: pre-swap SOL → base token before deploying.
-  const percentX = activeBinsAbove > 0 ? activeBinsAbove / totalBins : 0;
+  // The configured downside/upside pct values act as the liquidity divider:
+  // 40 below / 10 above means 80% stays SOL-side and 20% converts to token X.
+  liquidityDivider = getLiquidityDivider({
+    downsidePct: downside_pct,
+    upsidePct: upside_pct,
+    activeBinsAbove,
+    totalBins,
+  });
+  const percentX = liquidityDivider.xShare;
+  const useMeteoraZap = shouldUseMeteoraZapForDeploy({ activeBinsAbove, finalAmountX, isWideRange });
   // solForX: fraction of the deploy amount to convert to token X.
   // We swap 10% MORE than the strategy needs (×1.10) so the wallet retains a 10% surplus
   // over what we tell the SDK to deploy. The SDK sets its on-chain ceiling to
@@ -890,7 +1289,7 @@ export async function deployPosition({
   const effectiveAmountY = finalAmountY - solForX;
 
   let totalXLamports = new BN(0);
-  if (!shouldUseLpAgentRelayForDeploy() && activeBinsAbove > 0) {
+  if (!useMeteoraZap && !shouldUseLpAgentRelayForDeploy() && activeBinsAbove > 0) {
     const baseMintAddress = pool.lbPair.tokenXMint.toString();
     log("deploy", `bins_above=${activeBinsAbove}: swapping ${solForX.toFixed(4)} SOL → base token before deploy`);
     const swapResult = await swapToken({
@@ -916,7 +1315,7 @@ export async function deployPosition({
     totalXLamports = new BN(Math.floor(finalAmountX * Math.pow(10, decimals)));
   }
 
-  const totalYLamports = new BN(Math.floor(effectiveAmountY * 1e9));
+  const totalYLamports = new BN(Math.floor((useMeteoraZap ? finalAmountY : effectiveAmountY) * 1e9));
 
   if (shouldUseLpAgentRelayForDeploy()) {
     try {
@@ -1006,6 +1405,18 @@ export async function deployPosition({
           entry_volume,
           entry_holders,
         });
+        // Mirror entry to position-memory.json for dashboard
+        const tracked1 = getTrackedPosition(positionAddress);
+        if (tracked1) {
+          recordPositionEntry({
+            position: positionAddress,
+            pool: pool_address,
+            pool_name,
+            tracked: tracked1,
+            signal_snapshot: { ...(signalSnapshot || {}), price_vs_ath_pct: athPct, ...entryRsi },
+            entry_price: activePrice,
+          });
+        }
       }
 
       appendDecision({
@@ -1072,7 +1483,21 @@ export async function deployPosition({
   try {
     const txHashes = [];
 
-    if (isWideRange) {
+    if (useMeteoraZap) {
+      const zapTxHashes = await executeMeteoraZapDeploy({
+        wallet,
+        newPosition,
+        poolAddress: pool_address,
+        pool,
+        activeBinId: activeBin.binId,
+        minBinId,
+        maxBinId,
+        strategyType,
+        finalAmountY,
+        liquidityXShare: percentX,
+      });
+      txHashes.push(...zapTxHashes);
+    } else if (isWideRange) {
       // ── Wide Range Path (>69 bins) ─────────────────────────────────
       // Solana limits inner instruction realloc to 10240 bytes, so we can't create
       // a large position in a single initializePosition ix.
@@ -1152,6 +1577,18 @@ export async function deployPosition({
       entry_volume,
       entry_holders,
     });
+    // Mirror entry to position-memory.json for dashboard
+    const tracked2 = getTrackedPosition(newPosition.publicKey.toString());
+    if (tracked2) {
+      recordPositionEntry({
+        position: newPosition.publicKey.toString(),
+        pool: pool_address,
+        pool_name,
+        tracked: tracked2,
+        signal_snapshot: { ...(signalSnapshot || {}), price_vs_ath_pct: athPct, ...entryRsi },
+        entry_price: activePrice,
+      });
+    }
 
     appendDecision({
       type: "deploy",
@@ -1196,10 +1633,18 @@ export async function deployPosition({
       amount_x: finalAmountX,
       amount_y: finalAmountY,
       txs: txHashes,
+      meteora_zap: useMeteoraZap,
+      liquidity_divider: {
+        source: liquidityDivider.source,
+        sol_share: liquidityDivider.yShare,
+        token_x_share: liquidityDivider.xShare,
+      },
+      base_mint: baseMint,
     };
   } catch (error) {
     log("deploy_error", error.message);
-    return { success: false, error: error.message };
+    // Return base_mint so executor can swap back any pre-swapped tokens
+    return { success: false, error: error.message, base_mint: activeBinsAbove > 0 ? baseMint : undefined };
   }
 }
 
@@ -1332,6 +1777,7 @@ const PERFORMANCE_SIGNAL_FIELDS = [
   "study_win_rate",
   "hive_consensus",
   "volatility",
+  "local_price_vs_ath_pct",
   // entry indicators
   "rsi_5m", "rsi_15m",
   "st_dir_5m", "st_dir_15m",
@@ -1344,6 +1790,8 @@ const PERFORMANCE_SIGNAL_FIELDS = [
   "exit_st_val_5m", "exit_st_val_15m",
   "exit_bb_upper_5m", "exit_bb_mid_5m", "exit_bb_lower_5m",
   "exit_bb_upper_15m", "exit_bb_mid_15m", "exit_bb_lower_15m",
+  // exit pool fundamentals (from Meteora pool API at close time)
+  "exit_fee_tvl_ratio", "exit_fee_window", "exit_volume", "exit_tvl",
 ];
 
 function resolvePerformanceSignalSnapshot({ poolAddress, baseMint, tracked }) {
@@ -1962,6 +2410,10 @@ export async function closePosition({ position_address, reason }) {
           let pnlPct = 0;
           let finalValueUsd = 0;
           let initialUsd = 0;
+          let pnlSol = null;
+          let finalValueSol = null;
+          let initialSol = null;
+          let feesSol = null;
           let feesUsd = tracked.total_fees_claimed_usd || 0;
           try {
             const closedUrl = `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${wallet.publicKey.toString()}&status=closed&pageSize=50&page=1`;
@@ -1976,6 +2428,10 @@ export async function closePosition({ position_address, reason }) {
                   pnlPct = getClosedPnlPct(posEntry, config.management.solMode);
                   finalValueUsd = parseFloat(posEntry.allTimeWithdrawals?.total?.usd || 0);
                   initialUsd = parseFloat(posEntry.allTimeDeposits?.total?.usd || 0);
+                  finalValueSol = maybeNum(posEntry.allTimeWithdrawals?.total?.sol);
+                  initialSol = maybeNum(posEntry.allTimeDeposits?.total?.sol);
+                  feesSol = maybeNum(posEntry.allTimeFees?.total?.sol);
+                  pnlSol = initialSol != null && finalValueSol != null ? finalValueSol + (feesSol ?? 0) - initialSol : maybeNum(posEntry.pnlSol);
                   feesUsd = parseFloat(posEntry.allTimeFees?.total?.usd || 0) || feesUsd;
                   break;
                 }
@@ -2000,11 +2456,30 @@ export async function closePosition({ position_address, reason }) {
             const exitDetail = await fetch(`https://pool-discovery-api.datapi.meteora.ag/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || "5m")}`).then(r => r.json()).catch(() => null);
             const ep = exitDetail?.data?.[0];
             if (ep) {
+              const exitMcap = parseFloat(ep?.token_x?.market_cap) || null;
+              const exitTvl = parseFloat(ep?.tvl ?? ep?.active_tvl) || null;
+              const exitVolume = parseFloat(ep?.volume) || null;
+              const exitFeeTvlRatio = parseFloat(ep?.fee_active_tvl_ratio) || null;
+              const exitFeeWindow = parseFloat(ep?.fee) || null;
               exitMarket = {
-                exit_mcap: parseFloat(ep?.token_x?.market_cap) || null,
-                exit_tvl: parseFloat(ep?.tvl ?? ep?.active_tvl) || null,
-                exit_volume: parseFloat(ep?.volume) || null,
+                exit_mcap: exitMcap,
+                exit_tvl: exitTvl,
+                exit_volume: exitVolume,
               };
+              Object.assign(snapshotWithExit, {
+                // exit.signal_snapshot should describe the close-time market;
+                // keep exit_* aliases for compatibility with lessons/performance reads.
+                mcap: exitMcap,
+                tvl: exitTvl,
+                volume: exitVolume,
+                fee_tvl_ratio: exitFeeTvlRatio,
+                fee_window: exitFeeWindow,
+                exit_mcap: exitMcap,
+                exit_fee_tvl_ratio: exitFeeTvlRatio,
+                exit_fee_window: exitFeeWindow,
+                exit_volume: exitVolume,
+                exit_tvl: exitTvl,
+              });
             }
           } catch { /* non-blocking */ }
 
@@ -2032,6 +2507,25 @@ export async function closePosition({ position_address, reason }) {
             entry_volume: tracked.entry_volume ?? null,
             entry_holders: tracked.entry_holders ?? null,
             ...exitMarket,
+          });
+
+          // Also record to position-memory.json for dashboard
+          recordPositionExit(position_address, reason, null, {
+            active_bin: activeBin?.binId ?? tracked?.active_bin_at_deploy ?? null,
+            pnl_pct: pnlPct,
+            peak_pnl_pct: tracked?.peak_pnl_pct ?? null,
+            trough_pnl_pct: tracked?.trough_pnl_pct ?? null,
+            pnl_usd: pnlTrueUsd, // always true USD, not SOL-mode adjusted
+            pnl_sol: pnlSol,
+            initial_value_usd: initialUsd,
+            initial_value_sol: initialSol,
+            final_value_usd: finalValueUsd,
+            final_value_sol: finalValueSol,
+            fees_earned_usd: feesUsd,
+            fees_earned_sol: feesSol,
+            minutes_in_range: minutesHeld - minutesOOR,
+            minutes_held: minutesHeld,
+            signal_snapshot: snapshotWithExit,
           });
 
           appendDecision({
@@ -2086,7 +2580,9 @@ export async function closePosition({ position_address, reason }) {
     // ─── Step 1: Claim Fees (to clear account state) ───────────
     const recentlyClaimed = tracked?.last_claim_at && (Date.now() - new Date(tracked.last_claim_at).getTime()) < 60_000;
     try {
-      if (recentlyClaimed) {
+      if (config.api.meteoraZapEnabled) {
+        log("close", "Step 1: Skipping separate claim — Meteora Zap close will claim atomically");
+      } else if (recentlyClaimed) {
         log("close", `Step 1: Skipping claim — fees already claimed ${Math.round((Date.now() - new Date(tracked.last_claim_at).getTime()) / 1000)}s ago`);
       } else {
         log("close", `Step 1: Claiming fees for ${position_address}`);
@@ -2111,8 +2607,9 @@ export async function closePosition({ position_address, reason }) {
     let hasLiquidity = false;
     let closeFromBinId = -887272;
     let closeToBinId = 887272;
+    let positionDataForClose = null;
     try {
-      const positionDataForClose = await pool.getPosition(positionPubKey);
+      positionDataForClose = await pool.getPosition(positionPubKey);
       const processed = positionDataForClose?.positionData;
       if (processed) {
         closeFromBinId = processed.lowerBinId ?? closeFromBinId;
@@ -2124,20 +2621,43 @@ export async function closePosition({ position_address, reason }) {
       log("close_warn", `Could not check liquidity state: ${e.message}`);
     }
 
+    let zapOutResult = null;
     if (hasLiquidity) {
-      log("close", `Step 2: Removing liquidity and closing account`);
-      const closeTx = await pool.removeLiquidity({
-        user: wallet.publicKey,
-        position: positionPubKey,
-        fromBinId: closeFromBinId,
-        toBinId: closeToBinId,
-        bps: new BN(10000),
-        shouldClaimAndClose: true,
-      });
+      if (config.api.meteoraZapEnabled) {
+        try {
+          zapOutResult = await executeMeteoraAtomicZapOutClose({
+            wallet,
+            poolAddress,
+            pool,
+            positionPubKey,
+            positionData: positionDataForClose?.positionData,
+            fromBinId: closeFromBinId,
+            toBinId: closeToBinId,
+          });
+          if (zapOutResult?.tx) {
+            closeTxHashes.push(...(zapOutResult.setup_txs || []), zapOutResult.tx);
+          }
+        } catch (e) {
+          log("close_warn", "Meteora atomic zap-out close failed; falling back to local close + Jupiter auto-swap: " + e.message);
+          zapOutResult = null;
+        }
+      }
 
-      for (const tx of Array.isArray(closeTx) ? closeTx : [closeTx]) {
-        const txHash = await sendAndConfirmTransaction(getConnection(), tx, [wallet]);
-        closeTxHashes.push(txHash);
+      if (!zapOutResult?.tx) {
+        log("close", `Step 2: Removing liquidity and closing account`);
+        const closeTx = await pool.removeLiquidity({
+          user: wallet.publicKey,
+          position: positionPubKey,
+          fromBinId: closeFromBinId,
+          toBinId: closeToBinId,
+          bps: new BN(10000),
+          shouldClaimAndClose: true,
+        });
+
+        for (const tx of Array.isArray(closeTx) ? closeTx : [closeTx]) {
+          const txHash = await sendAndConfirmTransaction(getConnection(), tx, [wallet]);
+          closeTxHashes.push(txHash);
+        }
       }
     } else {
       log("close", `Step 2: No position liquidity detected, closing account`);
@@ -2211,6 +2731,10 @@ export async function closePosition({ position_address, reason }) {
       let pnlPct = 0;
       let finalValueUsd = 0;
       let initialUsd = 0;
+      let pnlSol = null;
+      let finalValueSol = null;
+      let initialSol = null;
+      let feesSol = null;
       let feesUsd = tracked.total_fees_claimed_usd || 0;
       try {
         const closedUrl = `https://dlmm.datapi.meteora.ag/positions/${poolAddress}/pnl?user=${wallet.publicKey.toString()}&status=closed&pageSize=50&page=1`;
@@ -2226,6 +2750,10 @@ export async function closePosition({ position_address, reason }) {
               const nextFinalValueUsd = parseFloat(posEntry.allTimeWithdrawals?.total?.usd || 0);
               const nextInitialUsd = parseFloat(posEntry.allTimeDeposits?.total?.usd || 0);
               const nextFeesUsd = parseFloat(posEntry.allTimeFees?.total?.usd || 0) || feesUsd;
+              const nextFinalValueSol = maybeNum(posEntry.allTimeWithdrawals?.total?.sol);
+              const nextInitialSol = maybeNum(posEntry.allTimeDeposits?.total?.sol);
+              const nextFeesSol = maybeNum(posEntry.allTimeFees?.total?.sol);
+              const nextPnlSol = nextInitialSol != null && nextFinalValueSol != null ? nextFinalValueSol + (nextFeesSol ?? 0) - nextInitialSol : maybeNum(posEntry.pnlSol);
 
               if (shouldRejectClosedPnl(nextPnlPct, reason || tracked?.close_reason)) {
                 log("close_warn", `Rejected unsettled closed PnL for ${position_address.slice(0, 8)} on attempt ${attempt + 1}/6: ${nextPnlPct.toFixed(2)}%`);
@@ -2235,6 +2763,10 @@ export async function closePosition({ position_address, reason }) {
                 pnlPct        = nextPnlPct;
                 finalValueUsd = nextFinalValueUsd;
                 initialUsd    = nextInitialUsd;
+                pnlSol        = nextPnlSol;
+                finalValueSol = nextFinalValueSol;
+                initialSol    = nextInitialSol;
+                feesSol       = nextFeesSol;
                 feesUsd       = nextFeesUsd;
                 const depositSolDbg    = posEntry?.allTimeDeposits?.total?.sol;
                 const withdrawalSolDbg = posEntry?.allTimeWithdrawals?.total?.sol;
@@ -2289,11 +2821,30 @@ export async function closePosition({ position_address, reason }) {
         const exitDetail = await fetch(`https://pool-discovery-api.datapi.meteora.ag/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(config.screening?.timeframe || "5m")}`).then(r => r.json()).catch(() => null);
         const ep = exitDetail?.data?.[0];
         if (ep) {
+          const exitMcap = parseFloat(ep?.token_x?.market_cap) || null;
+          const exitTvl = parseFloat(ep?.tvl ?? ep?.active_tvl) || null;
+          const exitVolume = parseFloat(ep?.volume) || null;
+          const exitFeeTvlRatio = parseFloat(ep?.fee_active_tvl_ratio) || null;
+          const exitFeeWindow = parseFloat(ep?.fee) || null;
           exitMarket = {
-            exit_mcap: parseFloat(ep?.token_x?.market_cap) || null,
-            exit_tvl: parseFloat(ep?.tvl ?? ep?.active_tvl) || null,
-            exit_volume: parseFloat(ep?.volume) || null,
+            exit_mcap: exitMcap,
+            exit_tvl: exitTvl,
+            exit_volume: exitVolume,
           };
+          Object.assign(snapshotWithExit, {
+            // exit.signal_snapshot should describe the close-time market;
+            // keep exit_* aliases for compatibility with lessons/performance reads.
+            mcap: exitMcap,
+            tvl: exitTvl,
+            volume: exitVolume,
+            fee_tvl_ratio: exitFeeTvlRatio,
+            fee_window: exitFeeWindow,
+            exit_mcap: exitMcap,
+            exit_fee_tvl_ratio: exitFeeTvlRatio,
+            exit_fee_window: exitFeeWindow,
+            exit_volume: exitVolume,
+            exit_tvl: exitTvl,
+          });
         }
       } catch { /* non-blocking */ }
 
@@ -2321,6 +2872,24 @@ export async function closePosition({ position_address, reason }) {
         entry_volume: tracked.entry_volume ?? null,
         entry_holders: tracked.entry_holders ?? null,
         ...exitMarket,
+      });
+
+      recordPositionExit(position_address, reason, null, {
+        active_bin: pool.lbPair.activeId ?? tracked?.active_bin_at_deploy ?? null,
+        pnl_pct: pnlPct,
+        peak_pnl_pct: tracked?.peak_pnl_pct ?? null,
+        trough_pnl_pct: tracked?.trough_pnl_pct ?? null,
+        pnl_usd: pnlTrueUsd, // always true USD, not SOL-mode adjusted
+        pnl_sol: pnlSol,
+        initial_value_usd: initialUsd,
+        initial_value_sol: initialSol,
+        final_value_usd: finalValueUsd,
+        final_value_sol: finalValueSol,
+        fees_earned_usd: feesUsd,
+        fees_earned_sol: feesSol,
+        minutes_in_range: minutesHeld - minutesOOR,
+        minutes_held: minutesHeld,
+        signal_snapshot: snapshotWithExit,
       });
 
       appendDecision({
@@ -2353,7 +2922,9 @@ export async function closePosition({ position_address, reason }) {
         txs: txHashes,
         pnl_usd: pnlUsd,
         pnl_pct: pnlPct,
-        base_mint: closeBaseMint,
+        base_mint: zapOutResult?.tx ? undefined : closeBaseMint,
+        meteora_zap_out: !!zapOutResult?.tx,
+        zap_out_txs: zapOutResult?.tx ? [...(zapOutResult.setup_txs || []), zapOutResult.tx] : [],
       };
     }
 
@@ -2376,7 +2947,9 @@ export async function closePosition({ position_address, reason }) {
       claim_txs: claimTxHashes,
       close_txs: closeTxHashes,
       txs: txHashes,
-      base_mint: pool.lbPair.tokenXMint.toString(),
+      base_mint: zapOutResult?.tx ? undefined : pool.lbPair.tokenXMint.toString(),
+      meteora_zap_out: !!zapOutResult?.tx,
+      zap_out_txs: zapOutResult?.tx ? [...(zapOutResult.setup_txs || []), zapOutResult.tx] : [],
     };
   } catch (error) {
     log("close_error", error.message);

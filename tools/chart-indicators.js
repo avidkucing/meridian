@@ -222,6 +222,32 @@ function evaluatePreset(side, preset, payload) {
             reason: "Price rejected below a key Fibonacci level",
             signal: summary,
           };
+    case "no_falling_knife":
+      // Block entry when RSI is oversold AND ST is bearish — oversold-but-falling pattern
+      // that historically continues to dump (52% win, -0.33% avg vs 69%/+0.57% baseline).
+      // Allows entry when RSI is not deeply oversold OR the trend is still bullish.
+      // Exit: ST flips bearish or RSI reaches overbought.
+      return side === "entry"
+        ? {
+            confirmed: rsi == null || rsi >= oversold || isBullish,
+            reason:
+              rsi != null && rsi < oversold && isBearish
+                ? `Falling knife blocked: RSI ${rsi.toFixed(1)} < ${oversold} with bearish ST`
+                : rsi != null
+                ? `RSI ${rsi.toFixed(1)} ${rsi >= oversold ? ">=" : "<"} ${oversold} | ST ${summary.supertrendDirection}`
+                : "RSI unavailable — allowing entry",
+            signal: summary,
+          }
+        : {
+            confirmed:
+              summary.supertrendBreakDown ||
+              (isBearish && close != null && summary.supertrendValue != null && close <= summary.supertrendValue) ||
+              (rsi != null && rsi >= overbought),
+            reason: summary.supertrendBreakDown
+              ? "Supertrend flipped bearish"
+              : `RSI ${rsi?.toFixed(1)} >= overbought ${overbought}`,
+            signal: summary,
+          };
     case "dip_entry":
       // Enter when ST is bearish OR RSI is above the floor (>= rsiFloor, default 16).
       // Blocks freefall entries: ST bullish + RSI < floor = token in freefall, not a dip.

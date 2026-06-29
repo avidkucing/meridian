@@ -53,3 +53,4 @@ logs.txt
 ohlcv-cache
 *.pem
 *.b64
+position-memory.json

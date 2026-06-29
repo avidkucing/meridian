@@ -205,7 +205,7 @@ function analyzeTokenInfo(info = {}) {
   const smartWallets = num(tags.smart_wallets);
   const kolWallets = num(tags.renowned_wallets);
   const tradeFeeSol = num(info.trade_fee);
-  const price = num(info.price);
+  const price = num(info.price?.price ?? info.price);
   const athPrice = num(info.ath_price);
   const priceVsAthPct = athPrice > 0 && price > 0 ? (price / athPrice) * 100 : null;
   const athFilter = g.athFilterPct;
@@ -396,6 +396,12 @@ function condenseGmgnCandidate({ token, pool, poolDetail, security, info, infoAn
     active_tvl: round(activeTvl),
     fee_active_tvl_ratio: feeActiveTvlRatio,
     volatility: poolDetail?.volatility != null ? Number(Number(poolDetail.volatility).toFixed(2)) : null,
+    // Pool health from Meteora discovery API (same source as Meteora-screened candidates)
+    active_positions: poolDetail?.active_positions ?? null,
+    active_pct: poolDetail?.active_positions_pct != null ? Number(Number(poolDetail.active_positions_pct).toFixed(1)) : null,
+    unique_traders: poolDetail?.unique_traders ?? null,
+    swap_count: poolDetail?.swap_count ?? token.swaps ?? null,
+    organic_score: poolDetail?.token_x?.organic_score != null ? Math.round(poolDetail.token_x.organic_score) : null,
     // Stage 1 GMGN rank: token-level metrics
     holders: num(token.holder_count || info.holder_count),
     mcap: round(num(token.market_cap || (num(info.price) * num(info.circulating_supply)))),
@@ -404,7 +410,6 @@ function condenseGmgnCandidate({ token, pool, poolDetail, security, info, infoAn
     price: num(info.price || token.price),
     price_change_pct: num(token.price_change_percent5m ?? token.price_change_percent),
     volume: num(token.volume ?? 0),
-    swap_count: token.swaps ?? null,
     gmgn: true,
     gmgn_score: Number(gmgnScore.toFixed(2)),
     gmgn_total_fee_sol: num(infoAnalysis?.totalFeeSol ?? info.total_fee),
@@ -671,7 +676,7 @@ export async function fetchGmgnTokenFeeSol(mint) {
     const info = payload?.data?.data || payload?.data || payload;
     const totalFee = num(info?.total_fee);
     const athPrice = num(info?.ath_price);
-    const price    = num(info?.price);
+    const price    = num(info?.price?.price ?? info?.price);
     const priceVsAthPct = athPrice > 0 && price > 0 ? parseFloat(((price / athPrice) * 100).toFixed(2)) : null;
     return {
       total_fee: totalFee > 0 ? totalFee : null,
@@ -771,7 +776,7 @@ export async function getGmgnTokenFees(mint) {
     if (!info || typeof info !== "object") return null;
     const toNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
     const athPrice = toNum(info.ath_price);
-    const price    = toNum(info.price);
+    const price    = toNum(info.price?.price ?? info.price);
     const priceVsAthPct = athPrice > 0 && price > 0 ? parseFloat(((price / athPrice) * 100).toFixed(2)) : null;
     return { total_fee: toNum(info.total_fee), trade_fee: toNum(info.trade_fee), ath_price: athPrice, price_vs_ath_pct: priceVsAthPct };
   } catch (error) {

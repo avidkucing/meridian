@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import { agentLoop } from "./agent.js";
 import { log } from "./logger.js";
 import { getMyPositions, closePosition, getActiveBin } from "./tools/dlmm.js";
-import { getWalletBalances } from "./tools/wallet.js";
+import { getWalletBalances, swapToken } from "./tools/wallet.js";
 import { getTopCandidates, degenScore, getTopCanditatesWithAllSources } from "./tools/screening.js";
 import { formatGmgnCandidateForPrompt } from "./tools/gmgn.js";
 import { config, reloadScreeningThresholds, computeDeployAmount } from "./config.js";
@@ -26,7 +26,8 @@ import {
   createLiveMessage,
 } from "./telegram.js";
 import { generateBriefing } from "./briefing.js";
-import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, confirmPeak, registerExitSignal } from "./state.js";
+import { getLastBriefingDate, setLastBriefingDate, trackPosition, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, confirmPeak, registerExitSignal, updateTroughPnl, queueTroughConfirmation, resolvePendingTrough } from "./state.js";
+import { fetchChartIndicatorsForMint } from "./tools/chart-indicators.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, addPoolNote } from "./pool-memory.js";
 import { checkSmartWalletsOnPool } from "./smart-wallets.js";
@@ -95,6 +96,9 @@ let _screeningBusy = false;  // prevents overlapping screening cycles
 let _screeningLastTriggered = 0; // epoch ms — prevents management from spamming screening
 // Exit/peak confirmation is now done by consecutive-tick counting in state.js
 // (registerExitSignal / confirmPeak), driven by the 3s RPC poller — no setTimeout rechecks.
+// Stop-loss trough confirmation is a separate, still-alive 15s-recheck mechanism (below).
+const _troughConfirmTimers = new Map();
+const SL_TROUGH_CONFIRM_DELAY_MS = 15_000;
 // Fresh deploys produce unreliable PnL readings; skip peak tracking until position has settled.
 const PNL_DEPLOY_COOLDOWN_MS = 1 * 60_000; // 1 minute
 
@@ -113,6 +117,31 @@ function sanitizeUntrustedPromptText(text, maxLen = 500) {
     .trim()
     .slice(0, maxLen);
   return cleaned ? JSON.stringify(cleaned) : null;
+}
+
+function shouldUsePnlRecheck() {
+  return !config.api.lpAgentRelayEnabled;
+}
+
+function scheduleTroughConfirmation(positionAddress) {
+  if (!positionAddress || _troughConfirmTimers.has(positionAddress)) return;
+
+  const timer = setTimeout(async () => {
+    _troughConfirmTimers.delete(positionAddress);
+    try {
+      const result = await getMyPositions({ force: true, silent: true }).catch(() => null);
+      const position = result?.positions?.find((p) => p.position === positionAddress);
+      const resolved = resolvePendingTrough(positionAddress, position?.pnl_pct ?? null, config.management.stopLossPct);
+      if (resolved?.confirmed) {
+        log("state", `[SL recheck] Confirmed stop loss for ${positionAddress} — triggering management`);
+        runManagementCycle({ silent: true }).catch((e) => log("cron_error", `SL recheck management failed: ${e.message}`));
+      }
+    } catch (error) {
+      log("state_warn", `SL trough confirmation failed for ${positionAddress}: ${error.message}`);
+    }
+  }, SL_TROUGH_CONFIRM_DELAY_MS);
+
+  _troughConfirmTimers.set(positionAddress, timer);
 }
 
 async function runBriefing() {
@@ -221,6 +250,37 @@ After evaluating, write a brief one-line result per position.
   return lines.join("\n");
 }
 
+async function sweepLeftoverTokens(openPositions = []) {
+  // Skip mints that are SOL, USDC/USDT, or currently locked in an open LP position
+  const activeMints = new Set(openPositions.map((p) => p.base_mint).filter(Boolean));
+  const skipMints = new Set([config.tokens.SOL, config.tokens.USDC, config.tokens.USDT, ...activeMints]);
+  // Belt-and-suspenders: Helius may return native SOL with a different mint than the wrapped SOL address
+  const skipSymbols = new Set(["SOL", "USDC", "USDT"]);
+
+  let wallet;
+  try {
+    wallet = await getWalletBalances({});
+  } catch (e) {
+    log("executor_warn", `Token sweep: wallet fetch failed: ${e.message}`);
+    return;
+  }
+
+  const leftovers = (wallet.tokens || []).filter((t) => {
+    if (skipMints.has(t.mint) || skipSymbols.has(t.symbol)) return false;
+    // Only attempt tokens Jupiter can price — unpriced tokens have no liquidity and will fail with "no quotes"
+    return t.usd != null && t.usd >= 0.10;
+  });
+
+  for (const token of leftovers) {
+    log("executor", `Token sweep: swapping leftover ${token.symbol} ($${token.usd}) back to SOL`);
+    try {
+      await swapToken({ input_mint: token.mint, output_mint: "SOL", amount: token.balance });
+    } catch (e) {
+      log("executor_warn", `Token sweep: swap of ${token.symbol} failed: ${e.message}`);
+    }
+  }
+}
+
 export async function runManagementCycle({ silent = false } = {}) {
   if (_managementBusy) return null;
   _managementBusy = true;
@@ -238,6 +298,9 @@ export async function runManagementCycle({ silent = false } = {}) {
     const livePositions = await getMyPositions({ force: true }).catch(() => null);
     positions = livePositions?.positions || [];
 
+    // Sweep any leftover tokens that weren't swapped after deploy (fire-and-forget, non-blocking)
+    sweepLeftoverTokens(positions).catch((e) => log("executor_warn", `Token sweep error: ${e.message}`));
+
     if (positions.length === 0) {
       log("cron", "No open positions — triggering screening cycle");
       mgmtReport = "No open positions. Triggering screening cycle.";
@@ -254,6 +317,33 @@ export async function runManagementCycle({ silent = false } = {}) {
       return { ...p };
     });
 
+    // Auto-recover untracked positions — e.g. deploy succeeded on-chain but trackPosition()
+    // was never called (executor error after liquidity was added). Only recover positions
+    // that have real on-chain value (> $1) so ghost positions are not accidentally tracked.
+    for (const p of positionData) {
+      if (!getTrackedPosition(p.position) && (p.total_value_true_usd ?? 0) > 1) {
+        const deployedAt = p.age_minutes != null
+          ? new Date(Date.now() - p.age_minutes * 60_000).toISOString()
+          : new Date().toISOString();
+        trackPosition({
+          position: p.position,
+          pool: p.pool,
+          pool_name: p.pair !== "?/SOL" ? p.pair : null,
+          strategy: null,
+          bin_range: { min: p.lower_bin, max: p.upper_bin },
+          active_bin: p.active_bin,
+          amount_sol: null,
+          bin_step: null,
+          volatility: null,
+          fee_tvl_ratio: p.fee_per_tvl_24h ?? null,
+          organic_score: null,
+          initial_value_usd: p.total_value_true_usd,
+          deployed_at: deployedAt,
+        });
+        log("state", `Auto-recovered untracked position ${p.position.slice(0, 8)} (${p.pair}) — age ~${p.age_minutes ?? "?"}m, value $${p.total_value_true_usd?.toFixed(2)}`);
+      }
+    }
+
     // JS exit checks. Management is the slow cron backstop: raise peak immediately
     // (confirmTicks=1) and act on detected exits directly. Real-time 2-tick
     // confirmation lives in the fast 3s poller below.
@@ -262,12 +352,15 @@ export async function runManagementCycle({ silent = false } = {}) {
       const trackedForCooldown = getTrackedPosition(p.position);
       const deployAgeMs = trackedForCooldown?.deployed_at
         ? Date.now() - new Date(trackedForCooldown.deployed_at).getTime()
-        : Infinity;
+        : (p.age_minutes != null ? p.age_minutes * 60_000 : 0); // fall back to on-chain age for untracked positions
       if (deployAgeMs < PNL_DEPLOY_COOLDOWN_MS) {
         log("state", `[PnL] Skipping peak/exit check for ${p.pair} — deploy cooldown (${Math.round(deployAgeMs / 1000)}s < ${PNL_DEPLOY_COOLDOWN_MS / 1000}s)`);
         continue;
       }
-      if (!p.pnl_pct_suspicious) confirmPeak(p.position, p.pnl_pct, 1);
+      if (!p.pnl_pct_suspicious) {
+        updateTroughPnl(p.position, p.pnl_pct);
+        confirmPeak(p.position, p.pnl_pct, 1);
+      }
       const exit = updatePnlAndCheckExits(p.position, p, config.management);
       if (exit) {
         exitMap.set(p.position, exit.reason);
@@ -301,6 +394,20 @@ export async function runManagementCycle({ silent = false } = {}) {
         continue;
       }
       actionMap.set(p.position, { action: "STAY" });
+    }
+
+    // Rule 5 rotation closes (slots full, not price-declining) must be limited to one —
+    // the worst performer. Keep all price-decline closes as-is.
+    const rule5Rotations = positionData.filter(p => {
+      const act = actionMap.get(p.position);
+      return act?.rule === 5 && act?.reason?.includes("rotation");
+    });
+    if (rule5Rotations.length > 1) {
+      rule5Rotations.sort((a, b) => (a.fee_per_tvl_24h ?? 0) - (b.fee_per_tvl_24h ?? 0));
+      rule5Rotations.slice(1).forEach(p => {
+        actionMap.set(p.position, { action: "STAY" });
+        log("cron", `Rule5 rotation: keeping ${p.pair} (fee=${p.fee_per_tvl_24h}) — only closing worst performer`);
+      });
     }
 
     // ── Build JS report ──────────────────────────────────────────────
@@ -605,6 +712,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
           active_pct:            pool.active_pct             ?? null,
           // Price action
           price_vs_ath_pct:      pool.price_vs_ath_pct       ?? null,
+          local_price_vs_ath_pct: pool.local_price_vs_ath_pct ?? null,
           price_change_pct:      pool.price_change_pct       ?? null,
           // Token
           mcap:                  pool.mcap                   ?? null,
@@ -809,14 +917,29 @@ Summarize the current portfolio health, total fees earned, and performance of al
         const trackedForCooldown = getTrackedPosition(p.position);
         const deployAgeMs = trackedForCooldown?.deployed_at
           ? Date.now() - new Date(trackedForCooldown.deployed_at).getTime()
-          : Infinity;
+          : (p.age_minutes != null ? p.age_minutes * 60_000 : 0); // fall back to on-chain age for untracked positions
         if (deployAgeMs < PNL_DEPLOY_COOLDOWN_MS) continue;
 
-        if (!p.pnl_pct_suspicious) confirmPeak(p.position, p.pnl_pct, confirmTicks);
+        if (!p.pnl_pct_suspicious) {
+          updateTroughPnl(p.position, p.pnl_pct);
+          confirmPeak(p.position, p.pnl_pct, confirmTicks);
+        }
 
         // Detect an exit signal this tick (rule-based exits, then deterministic close rules).
         const exit = updatePnlAndCheckExits(p.position, p, config.management);
         const closeRule = exit ? null : getDeterministicCloseRule(p, config.management, result.positions.length, config.risk.maxPositions);
+
+        // Stop-loss (rule 1) has its own dedicated 15s trough-recheck instead of the
+        // generic N-tick confirmation below — it confirms against the position's
+        // lowest seen PnL (trough), not just N consecutive ticks of the same signal.
+        if (closeRule?.rule === 1 && closeRule.needs_confirmation && shouldUsePnlRecheck()) {
+          if (queueTroughConfirmation(p.position, p.pnl_pct)) {
+            log("state", `[PnL poll] SL candidate: ${p.pair} ${p.pnl_pct?.toFixed(2)}% — queued 15s trough confirmation`);
+            scheduleTroughConfirmation(p.position);
+          }
+          continue;
+        }
+
         let signal = null, reason = null, rule = "exit";
         if (exit) { signal = exit.action; reason = exit.reason; }
         else if (closeRule) { signal = `RULE_${closeRule.rule}`; reason = closeRule.reason; rule = closeRule.rule; }
@@ -936,6 +1059,10 @@ async function shutdown(signal) {
   log("shutdown", `Received ${signal}. Shutting down...`);
   stopPolling();
   stopCronJobs();
+  if (_dashboardServer) {
+    _dashboardServer.close();
+    _dashboardServer = null;
+  }
 
   const positions = await withTimeout(
     getMyPositions({ force: true, silent: true }).catch((error) => {
@@ -979,6 +1106,16 @@ function formatCandidates(candidates) {
 
 function getDeterministicCloseRule(position, managementConfig, totalPositions, maxPositions) {
   const tracked = getTrackedPosition(position.position);
+
+  // Rule 0: zero-value ghost position — deploy failed after account creation, no liquidity.
+  // Requires BOTH missing deposit history AND near-zero on-chain balance.
+  // The Meteora PnL API can take 5-10+ minutes to index deposits, so a fresh legitimate
+  // position will have deposits_missing=true while its on-chain value is still ~$130+.
+  // total_value_true_usd < 1 confirms the position truly has no on-chain liquidity.
+  if (position.deposits_missing && (position.total_value_true_usd ?? 0) < 1 && (position.age_minutes ?? 0) >= 5) {
+    return { action: "CLOSE", rule: 0, reason: "zero value — failed deploy, no liquidity" };
+  }
+
   const pnlSuspect = (() => {
     // Couldn't-price-this-tick flag (e.g. Jupiter outage) — never act on PnL rules.
     if (position.pnl_pct_suspicious) return true;
@@ -992,10 +1129,16 @@ function getDeterministicCloseRule(position, managementConfig, totalPositions, m
   })();
 
   if (!pnlSuspect && position.pnl_pct != null && position.pnl_pct <= managementConfig.stopLossPct) {
-    return { action: "CLOSE", rule: 1, reason: "stop loss" };
+    if ((position.age_minutes ?? 0) < 5) return null; // PnL unreliable before on-chain data settles
+    if (tracked?.confirmed_sl_exit) return { action: "CLOSE", rule: 1, reason: `stop loss (confirmed ${position.pnl_pct.toFixed(2)}%)` };
+    return { action: "CLOSE", rule: 1, reason: `stop loss (${position.pnl_pct.toFixed(2)}%)`, needs_confirmation: true };
   }
-  if (!pnlSuspect && position.pnl_pct != null && managementConfig.takeProfitPct > 0 && position.pnl_pct >= managementConfig.takeProfitPct) {
-    return { action: "CLOSE", rule: 2, reason: "take profit" };
+  // Use confirmed peak_pnl_pct (15s recheck) not raw pnl_pct — prevents phantom OOR readings
+  // from triggering TP before a real sustained gain is confirmed.
+  const confirmedPeak = tracked?.peak_pnl_pct ?? 0;
+  if (managementConfig.takeProfitPct > 0 && confirmedPeak >= managementConfig.takeProfitPct) {
+    if ((position.age_minutes ?? 0) < 5) return null;
+    return { action: "CLOSE", rule: 2, reason: `take profit (confirmed peak ${confirmedPeak.toFixed(2)}%)` };
   }
   if (
     position.active_bin != null &&
@@ -1018,13 +1161,28 @@ function getDeterministicCloseRule(position, managementConfig, totalPositions, m
       return { action: "CLOSE", rule: 4, reason: `OOR ${oorDirection} for ${position.minutes_out_of_range}m (limit: ${waitMinutes}m)` };
     }
   }
-  const shouldCloseLowYield = totalPositions >= maxPositions &&
+  if (
     position.fee_per_tvl_24h != null &&
     position.fee_per_tvl_24h < managementConfig.minFeePerTvl24h &&
-    (position.age_minutes ?? 0) >= 60;
-  if (shouldCloseLowYield) {
-    log("cron_warn", `Rule5 debug: total=${totalPositions} max=${maxPositions} fee=${position.fee_per_tvl_24h} age=${position.age_minutes} pnl=${position.pnl_pct}`);
-    return { action: "CLOSE", rule: 5, reason: "low yield" };
+    (position.age_minutes ?? 0) >= (managementConfig.minAgeBeforeYieldCheck ?? 60)
+  ) {
+    const binStep = tracked?.bin_step;
+    const deployBin = tracked?.active_bin_at_deploy;
+    const currentBin = position.active_bin;
+    let priceChangePct = null;
+    if (binStep && deployBin != null && currentBin != null) {
+      priceChangePct = (Math.pow(1 + binStep / 10000, currentBin - deployBin) - 1) * 100;
+    }
+    const priceThreshold = managementConfig.lowYieldPriceChangePct ?? -15;
+    const priceDeclining = priceChangePct == null || priceChangePct < priceThreshold;
+    const slotsAtMax = totalPositions >= maxPositions;
+    if (priceDeclining || slotsAtMax) {
+      const reason = priceDeclining
+        ? `low yield + price ${priceChangePct != null ? priceChangePct.toFixed(1) + "%" : "unknown"} (threshold: ${priceThreshold}%)`
+        : `low yield rotation (slots full)`;
+      log("cron_warn", `Rule5 close: total=${totalPositions} max=${maxPositions} fee=${position.fee_per_tvl_24h} age=${position.age_minutes} priceChg=${priceChangePct?.toFixed(1) ?? "?"}% reason=${reason}`);
+      return { action: "CLOSE", rule: 5, reason };
+    }
   }
   const maxLossHold = managementConfig.maxLossHoldMinutes;
   if (
@@ -1115,6 +1273,7 @@ function getLoneCandidateSkipReason({ pool, sw, n, ti } = {}) {
 const isTTY = process.stdin.isTTY;
 let cronStarted = false;
 let busy = false;
+let _dashboardServer = null;
 const _telegramQueue = []; // queued messages received while agent was busy
 const sessionHistory = []; // persists conversation across REPL turns
 const MAX_HISTORY = 20;    // keep last 20 messages (10 exchanges)
@@ -1244,7 +1403,6 @@ function settingValue(key) {
     trailingDropPct: config.management.trailingDropPct,
     outOfRangeWaitMinutesAbove: config.management.outOfRangeWaitMinutesAbove,
     outOfRangeWaitMinutesBelow: config.management.outOfRangeWaitMinutesBelow,
-    binUtilSlEnabled: config.management.binUtilSlEnabled,
     repeatDeployCooldownEnabled: config.management.repeatDeployCooldownEnabled,
     repeatDeployCooldownTriggerCount: config.management.repeatDeployCooldownTriggerCount,
     repeatDeployCooldownHours: config.management.repeatDeployCooldownHours,
@@ -1339,7 +1497,7 @@ function renderSettingsMenu(page = "main") {
       inputButton("maxLossHoldMinutes", "Max loss hold (min)"),
       stepButtons("outOfRangeWaitMinutesAbove", "OOR above (min)", 5),
       stepButtons("outOfRangeWaitMinutesBelow", "OOR below (min)", 5),
-      [toggleButton("trailingTakeProfit", "Trailing TP"), toggleButton("binUtilSlEnabled", "Bin-util SL")],
+      toggleButton("trailingTakeProfit", "Trailing TP"),
       inputButton("trailingTriggerPct", "Trail trigger", { digits: 1 }),
       inputButton("trailingDropPct", "Trail drop", { digits: 1 }),
       [toggleButton("repeatDeployCooldownEnabled", "Repeat cooldown"), toggleButton("allowMultiplePositionsPerToken", "Multi-token pos")],
@@ -2027,6 +2185,19 @@ function fmtPct(value) {
 // Register restarter — when update_config changes intervals, running cron jobs get replaced
 registerCronRestarter(() => { if (cronStarted) startCronJobs(); });
 
+maybeStartDashboard();
+
+// ─── Optional Web Dashboard ──────────────────────────────────────
+async function maybeStartDashboard() {
+  if (process.env.DASHBOARD !== "true") return;
+  try {
+    const { createServer } = await import("./dashboard/server.js");
+    _dashboardServer = createServer();
+  } catch (e) {
+    log("startup_error", `Dashboard failed to start: ${e.message}`);
+  }
+}
+
 if (isMain && isTTY) {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -2339,6 +2510,7 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
   // Non-TTY: start immediately
   log("startup", "Non-TTY mode — starting cron cycles immediately.");
   startCronJobs();
+  maybeStartDashboard();
   maybeRunMissedBriefing().catch(() => { });
   startPolling(telegramHandler);
   (async () => {

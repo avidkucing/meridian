@@ -9,6 +9,7 @@ import { discoverGmgnPools, fetchGmgnTokenFeeSol } from "./gmgn.js";
 const DATAPI_JUP = "https://datapi.jup.ag/v1";
 
 const POOL_DISCOVERY_BASE = "https://pool-discovery-api.datapi.meteora.ag";
+const METEORA_OHLCV_BASE = "https://dlmm.datapi.meteora.ag/pools";
 const MIN_VOLATILITY_TIMEFRAME = "30m";
 const TIMEFRAME_MINUTES = {
   "5m": 5,
@@ -97,6 +98,7 @@ function numeric(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
+
 
 function isUsableVolatility(value) {
   const n = numeric(value);
@@ -762,6 +764,8 @@ export async function getTopCanditatesWithAllSources({ limit = 10, positions = [
   const minFeeChangePct     = config.screening.minFeeChangePct != null ? Number(config.screening.minFeeChangePct) : null;
   const minVolumeChangePct  = config.screening.minVolumeChangePct != null ? Number(config.screening.minVolumeChangePct) : null;
   const maxPriceChange1hPct = config.screening.maxPriceChange1hPct != null ? Number(config.screening.maxPriceChange1hPct) : null;
+  const extremeEntryFilterEnabled = config.screening.extremeEntryFilterEnabled === true;
+  const extremeEntryP1hPct = config.screening.extremeEntryP1hPct != null ? Number(config.screening.extremeEntryP1hPct) : 30;
   const maxVolatility       = config.screening.maxVolatilityToDeploy != null ? Number(config.screening.maxVolatilityToDeploy) : null;
   const maxTop10Pct         = config.screening.maxTop10Pct != null ? Number(config.screening.maxTop10Pct) : null;
   const maxBotHoldersPct    = config.screening.maxBotHoldersPct != null ? Number(config.screening.maxBotHoldersPct) : null;
@@ -899,18 +903,31 @@ export async function getTopCanditatesWithAllSources({ limit = 10, positions = [
       }
     }
 
-    const priceChange1h = pool.price_change_1h ?? null;
-    if (maxPriceChange1hPct != null && priceChange1h != null && priceChange1h > maxPriceChange1hPct) {
+    const priceChange1hRaw = pool.price_change_1h ?? null;
+    const priceChange1h = priceChange1hRaw == null ? null : Number(priceChange1hRaw);
+    if (maxPriceChange1hPct != null && Number.isFinite(priceChange1h) && priceChange1h > maxPriceChange1hPct) {
       log("screening", `Pump filter: dropped ${pool.name} — price_change_1h ${priceChange1h}% > ${maxPriceChange1hPct}%`);
       filteredOut.push({ name: pool.name, reason: `price_change_1h ${priceChange1h}% > ${maxPriceChange1hPct}%` });
       return false;
     }
+
+    if (config.indicators.negativeDriftFilter && Number.isFinite(priceChange1h)) {
+      const driftMin = config.indicators.negativeDriftP1hMin ?? -5;
+      const driftMax = config.indicators.negativeDriftP1hMax ?? 0;
+      if (priceChange1h >= driftMin && priceChange1h < driftMax) {
+        log("screening", `Negative drift filter: dropped ${pool.name} — price_change_1h ${priceChange1h}% in [${driftMin}, ${driftMax})`);
+        filteredOut.push({ name: pool.name, reason: `negative drift: price_change_1h ${priceChange1h}% in [${driftMin}, ${driftMax})` });
+        return false;
+      }
+    }
+
 
     if (config.screening.halalFilter) {
       const halal = checkHalal({
         narrative: pool._narrative,
         twitter: pool._ti?.twitter,
         website: pool._ti?.website,
+        pairName: pool.name,
       });
       if (halal.blocked) {
         log("screening", `Halal filter: dropped ${pool.name} — ${halal.category} (${halal.pattern})`);
@@ -1008,6 +1025,8 @@ export async function getTopCandidates({
   const { positions } = await getMyPositions();
   const occupiedPools = new Set(positions.map(p => p.pool));
   const occupiedMints = new Set(positions.map(p => p.base_mint).filter(Boolean));
+  const extremeEntryFilterEnabled = config.screening.extremeEntryFilterEnabled === true;
+  const extremeEntryP1hPct = config.screening.extremeEntryP1hPct != null ? Number(config.screening.extremeEntryP1hPct) : 30;
   const minTvl = source === "gmgn"
     ? Number(config.gmgn.minTvl ?? config.screening.minTvl ?? 0)
     : Number(config.screening.minTvl ?? 0);
@@ -1088,6 +1107,20 @@ export async function getTopCandidates({
     const confirmedEligible = eligible.filter((pool) => {
       const confirmation = confirmationByPool.get(pool.pool);
       pool.indicator_confirmation = confirmation || null;
+      // Backfill raw indicator fields so post-confirmation filters (e.g. extreme entry) can read them
+      for (const intv of (confirmation?.intervals ?? [])) {
+        if (!intv.ok || !intv.signal) continue;
+        if (intv.interval === "5_MINUTE") {
+          if (pool.rsi_5m == null) pool.rsi_5m = intv.signal.rsi ?? null;
+          if (pool.st_dir_5m == null) pool.st_dir_5m = intv.signal.supertrendDirection ?? null;
+        } else if (intv.interval === "15_MINUTE") {
+          if (pool.rsi_15m == null) pool.rsi_15m = intv.signal.rsi ?? null;
+          if (pool.st_dir_15m == null) pool.st_dir_15m = intv.signal.supertrendDirection ?? null;
+        }
+      }
+      // Propagate 15m data to 5m slots when only 15m intervals are configured
+      if (pool.st_dir_5m == null && pool.st_dir_15m != null) pool.st_dir_5m = pool.st_dir_15m;
+      if (pool.rsi_5m == null && pool.rsi_15m != null) pool.rsi_5m = pool.rsi_15m;
       if (!confirmation || confirmation.confirmed) return true;
       pushFilteredReason(filteredOut, pool, `indicator reject: ${confirmation.reason}`);
       log("screening", `Indicator rejected ${pool.name} (${pool.pool.slice(0, 8)}): ${confirmation.reason}`);
@@ -1096,6 +1129,32 @@ export async function getTopCandidates({
     eligible.splice(0, eligible.length, ...confirmedEligible);
     if (eligible.length < before) {
       log("screening", `Indicator confirmation removed ${before - eligible.length} candidate(s)`);
+    }
+  }
+
+  // Extreme entry filter — runs after indicator confirmation so rsi_15m/st_dir_5m are populated.
+  // Blocks entries where price pumped/dumped hard AND RSI + supertrend confirm the overextension.
+  if (extremeEntryFilterEnabled && Number.isFinite(extremeEntryP1hPct) && extremeEntryP1hPct > 0 && eligible.length > 0) {
+    const overbought = Number(config.indicators.rsiOverbought ?? 80);
+    const oversold = Number(config.indicators.rsiOversold ?? 30);
+    const beforeExt = eligible.length;
+    eligible.splice(0, eligible.length, ...eligible.filter((pool) => {
+      const p1h = pool.price_change_1h == null ? null : Number(pool.price_change_1h);
+      if (!Number.isFinite(p1h)) return true;
+      const rsi15 = pool.rsi_15m == null ? null : Number(pool.rsi_15m);
+      const st5 = pool.st_dir_5m ?? null;
+      const rejectPump = p1h > extremeEntryP1hPct && Number.isFinite(rsi15) && rsi15 >= overbought && st5 === "bullish";
+      const rejectDump = p1h < -extremeEntryP1hPct && Number.isFinite(rsi15) && rsi15 <= oversold && st5 === "bearish";
+      if (rejectPump || rejectDump) {
+        const side = rejectPump ? "pump" : "dump";
+        log("screening", `Extreme entry filter: dropped ${pool.name} — ${side} p1h=${p1h}% rsi15=${rsi15} st5=${st5 ?? "n/a"}`);
+        pushFilteredReason(filteredOut, pool, `extreme entry ${side}: p1h ${p1h}% rsi15 ${rsi15} st5 ${st5 ?? "n/a"}`);
+        return false;
+      }
+      return true;
+    }));
+    if (eligible.length < beforeExt) {
+      log("screening", `Extreme entry filter removed ${beforeExt - eligible.length} candidate(s)`);
     }
   }
 

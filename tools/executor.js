@@ -186,10 +186,13 @@ const toolMap = {
       minTokenAgeHours: ["screening", "minTokenAgeHours"],
       maxTokenAgeHours: ["screening", "maxTokenAgeHours"],
       athFilterPct:     ["screening", "athFilterPct"],
+      localAthFilterPct:["screening", "localAthFilterPct"],
       maxVolatilityToDeploy: ["screening", "maxVolatilityToDeploy"],
       minFeeChangePct:     ["screening", "minFeeChangePct"],
       minVolumeChangePct:  ["screening", "minVolumeChangePct"],
       maxPriceChange1hPct: ["screening", "maxPriceChange1hPct"],
+      extremeEntryFilterEnabled: ["screening", "extremeEntryFilterEnabled"],
+      extremeEntryP1hPct: ["screening", "extremeEntryP1hPct"],
       minFeePerTvl24h: ["management", "minFeePerTvl24h"],
       loneCandidateMinDegen: ["screening", "loneCandidateMinDegen"],
       // management
@@ -216,7 +219,6 @@ const toolMap = {
       trailingTakeProfit: ["management", "trailingTakeProfit"],
       trailingTriggerPct: ["management", "trailingTriggerPct"],
       trailingDropPct: ["management", "trailingDropPct"],
-      binUtilSlEnabled: ["management", "binUtilSlEnabled"],
       pnlSanityMaxDiffPct: ["management", "pnlSanityMaxDiffPct"],
       // pnl poller
       pnlConfirmTicks: ["pnl", "confirmTicks"],
@@ -264,6 +266,7 @@ const toolMap = {
       publicApiKey: ["api", "publicApiKey"],
       agentMeridianApiUrl: ["api", "url"],
       lpAgentRelayEnabled: ["api", "lpAgentRelayEnabled"],
+      meteoraZapEnabled: ["api", "meteoraZapEnabled"],
       // pnl fetcher / poller
       pnlSource: ["pnl", "source"],
       pnlRpcUrl: ["pnl", "rpcUrl"],
@@ -549,6 +552,24 @@ export async function executeTool(name, args) {
       duration_ms: duration,
       success,
     });
+
+    if (name === "deploy_position" && result.base_mint) {
+      // Swap base tokens back to SOL: on success this recovers the ~9% surplus from bins_above
+      // pre-swap; on failure this recovers the full pre-swapped amount before the deploy reverted.
+      try {
+        const balances = await getWalletBalances({});
+        const token = balances.tokens?.find(t => t.mint === result.base_mint);
+        const tokenHasValue = token && token.usd != null && token.usd >= 0.10;
+        if (tokenHasValue) {
+          const symbol = token.symbol || result.base_mint.slice(0, 8);
+          const ctx = success ? "Post-deploy" : "Deploy-failed recovery";
+          log("executor", `${ctx}: swapping ${symbol} ($${token.usd.toFixed(2)}) back to SOL`);
+          await swapToken({ input_mint: result.base_mint, output_mint: "SOL", amount: token.balance });
+        }
+      } catch (e) {
+        log("executor_warn", `Post-deploy swap failed: ${e.message}`);
+      }
+    }
 
     if (success) {
       if (name === "swap_token" && result.tx) {

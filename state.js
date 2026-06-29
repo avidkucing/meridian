@@ -74,6 +74,7 @@ export function trackPosition({
   entry_tvl = null,
   entry_volume = null,
   entry_holders = null,
+  deployed_at = null,
 }) {
   const state = load();
   state.positions[position] = {
@@ -97,7 +98,7 @@ export function trackPosition({
     entry_volume,
     entry_holders,
     signal_snapshot: signal_snapshot || null,
-    deployed_at: new Date().toISOString(),
+    deployed_at: deployed_at ?? new Date().toISOString(),
     out_of_range_since: null,
     out_of_range_direction: null,
     last_claim_at: null,
@@ -107,12 +108,16 @@ export function trackPosition({
     closed_at: null,
     notes: [],
     peak_pnl_pct: 0,
+    trough_pnl_pct: null,
     pending_peak_pnl_pct: null,
     pending_peak_confirm_count: 0,
     pending_peak_started_at: null,
     pending_exit_action: null,
     pending_exit_count: 0,
     pending_exit_started_at: null,
+    pending_trough_pnl_pct: null,
+    pending_trough_started_at: null,
+    confirmed_sl_exit: false,
     trailing_active: false,
   };
   pushEvent(state, { action: "deploy", position, pool_name: pool_name || pool });
@@ -338,6 +343,66 @@ export function registerExitSignal(position_address, signal, confirmTicks = 2) {
 }
 
 /**
+ * Track the lowest confirmed PnL seen (for max-drawdown reporting), independent
+ * of the peak/exit confirmation mechanisms above.
+ */
+export function updateTroughPnl(position_address, pnlPct) {
+  if (pnlPct == null) return false;
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return false;
+
+  const current = pos.trough_pnl_pct ?? 0;
+  if (pnlPct >= current) return false;
+
+  pos.trough_pnl_pct = pnlPct;
+  save(state);
+  log("state", `Position ${position_address} trough PnL updated to ${pnlPct.toFixed(2)}%`);
+  return true;
+}
+
+/**
+ * 15s-recheck confirmation for a stop-loss trough candidate — separate from the
+ * generic exit-signal confirmation since it gates `confirmed_sl_exit`, a distinct flag.
+ */
+export function queueTroughConfirmation(position_address, candidatePnlPct) {
+  if (candidatePnlPct == null) return false;
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed || pos.confirmed_sl_exit) return false;
+
+  const changed = pos.pending_trough_pnl_pct == null || candidatePnlPct < pos.pending_trough_pnl_pct;
+  if (!changed) return false;
+
+  pos.pending_trough_pnl_pct = candidatePnlPct;
+  pos.pending_trough_started_at = new Date().toISOString();
+  save(state);
+  log("state", `Position ${position_address} SL trough candidate ${candidatePnlPct.toFixed(2)}% queued for 15s confirmation`);
+  return true;
+}
+
+export function resolvePendingTrough(position_address, currentPnlPct, stopLossPct) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed || pos.pending_trough_pnl_pct == null) return { confirmed: false, pending: false };
+
+  const pendingTrough = pos.pending_trough_pnl_pct;
+  pos.pending_trough_pnl_pct = null;
+  pos.pending_trough_started_at = null;
+
+  if (currentPnlPct != null && currentPnlPct <= stopLossPct) {
+    pos.confirmed_sl_exit = true;
+    save(state);
+    log("state", `Position ${position_address} SL confirmed: ${pendingTrough.toFixed(2)}% → still ${currentPnlPct.toFixed(2)}% after 15s`);
+    return { confirmed: true };
+  }
+
+  save(state);
+  log("state", `Position ${position_address} SL rejected: ${pendingTrough.toFixed(2)}% → recovered to ${currentPnlPct?.toFixed(2) ?? "?"}% after 15s`);
+  return { confirmed: false, rejected: true };
+}
+
+/**
  * Get all tracked positions (optionally filter open-only).
  */
 export function getTrackedPositions(openOnly = false) {
@@ -408,15 +473,10 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     log("state", `Position ${position_address} trailing TP activated (confirmed peak: ${pos.peak_pnl_pct}%)`);
   }
 
-  // Update OOR state
+  // Update OOR state — direction is set by pnl.js poller via markOutOfRange(direction)
   if (in_range === false && !pos.out_of_range_since) {
     pos.out_of_range_since = new Date().toISOString();
-    const { active_bin, lower_bin, upper_bin } = positionData;
-    if (active_bin != null && lower_bin != null && upper_bin != null) {
-      pos.out_of_range_direction = active_bin > upper_bin ? 'above' : 'below';
-    }
     changed = true;
-    log("state", `Position ${position_address} marked out of range (direction: ${pos.out_of_range_direction ?? 'unknown'})`);
   } else if (in_range === true && pos.out_of_range_since) {
     pos.out_of_range_since = null;
     pos.out_of_range_direction = null;
@@ -432,43 +492,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
       action: "STOP_LOSS",
       reason: `Stop loss: PnL ${currentPnlPct.toFixed(2)}% <= ${mgmtConfig.stopLossPct}%`,
     };
-  }
-
-  // ── Bin-utilization stop loss ──────────────────────────────────
-  // Fire when PnL underperforms what bin position alone would predict.
-  // Only triggers for downward bin movement (active_bin < deploy) since
-  // our range is asymmetric (more bins below than above).
-  // Uses stopLossPct as the baseline for full-bin-cross loss, and
-  // trailingDropPct as the tolerance buffer.
-  if (mgmtConfig.binUtilSlEnabled && !pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.stopLossPct != null) {
-    const binsBelow = pos.bin_range?.bins_below;
-    if (binsBelow && binsBelow > 0) {
-      const activeBinAtDeploy = pos.active_bin_at_deploy;
-      const currentActiveBin = positionData.active_bin;
-      if (activeBinAtDeploy != null && currentActiveBin != null && currentActiveBin < activeBinAtDeploy) {
-        const binsCrossed = activeBinAtDeploy - currentActiveBin;
-        const t = binsCrossed / binsBelow;
-        const isBidAsk = pos.strategy === "bid_ask";
-        // bid_ask: liquidity concentrated at edges, cumulative IL ~ t²
-        // spot/curve: uniform distribution, cumulative IL ~ t
-        const expectedPnl = isBidAsk
-          ? (t * t) * mgmtConfig.stopLossPct
-          : t * mgmtConfig.stopLossPct;
-        const tolerance = mgmtConfig.trailingDropPct ?? 0;
-        // Optional minimum-loss floor: bin-util SL cannot fire unless actual PnL
-        // is already below -binUtilSlMinPnl%. Prevents early noise cuts at small t
-        // where the t²-derived threshold is near zero (e.g. -1% on 5% bin cross).
-        const minPnlFloor = mgmtConfig.binUtilSlMinPnl;
-        const rawThreshold = expectedPnl - tolerance;
-        const threshold = (minPnlFloor > 0) ? Math.min(rawThreshold, -minPnlFloor) : rawThreshold;
-        if (currentPnlPct < threshold) {
-          return {
-            action: "STOP_LOSS",
-            reason: `Bin-util SL: PnL ${currentPnlPct.toFixed(2)}% < expected ${expectedPnl.toFixed(2)}% (${isBidAsk ? "bid_ask" : "spot"}, crossed ${binsCrossed}/${binsBelow} bins, tol ${tolerance}%)`,
-          };
-        }
-      }
-    }
   }
 
   // ── Trailing TP ────────────────────────────────────────────────
@@ -510,22 +533,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
         reason: `Out of range ${pos.out_of_range_direction || ''} for ${minutesOOR}m (limit: ${waitMinutes}m)`,
       };
     }
-  }
-
-  // ── Low yield (only after position has had time to accumulate fees) ───
-  const { age_minutes, pnl_pct } = positionData;
-  const minAgeForYieldCheck = mgmtConfig.minAgeBeforeYieldCheck ?? 60;
-  if (
-    fee_per_tvl_24h != null &&
-    mgmtConfig.minFeePerTvl24h != null &&
-    fee_per_tvl_24h < mgmtConfig.minFeePerTvl24h &&
-    (age_minutes == null || age_minutes >= minAgeForYieldCheck) &&
-    (pnl_pct ?? 0) > 0
-  ) {
-    return {
-      action: "LOW_YIELD",
-      reason: `Low yield: fee/TVL ${fee_per_tvl_24h.toFixed(2)}% < min ${mgmtConfig.minFeePerTvl24h}% (age: ${age_minutes ?? "?"}m)`,
-    };
   }
 
   return null;

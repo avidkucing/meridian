@@ -5,19 +5,16 @@
   "llmApiKey": "",
   "llmModel": "minimax/minimax-m2.7",
   "dryRun": true,
-
   "deployAmountSol": 0.5,
   "maxPositions": 3,
   "minSolToOpen": 0.55,
   "maxDeployAmount": 50,
   "gasReserve": 0.2,
   "positionSizePct": 0.35,
-
   "strategy": "bid_ask",
   "minBinsBelow": 35,
   "maxBinsBelow": 69,
   "defaultBinsBelow": 69,
-
   "timeframe": "5m",
   "category": "trending",
   "excludeHighSupplyConcentration": true,
@@ -43,8 +40,11 @@
   "blockedLaunchpads": [],
   "minTokenAgeHours": null,
   "maxTokenAgeHours": null,
+  "athFilterPct": 0,
+  "localAthFilterPct": 0,
+  "extremeEntryFilterEnabled": false,
+  "extremeEntryP1hPct": 30,
   "screeningSource": "meteora",
-
   "minClaimAmount": 5,
   "autoSwapAfterClaim": false,
   "outOfRangeBinsToClose": 10,
@@ -67,18 +67,15 @@
   "trailingDropPct": 1.5,
   "pnlSanityMaxDiffPct": 5,
   "solMode": false,
-
   "managementIntervalMin": 10,
   "screeningIntervalMin": 30,
   "healthCheckIntervalMin": 60,
-
   "temperature": 0.373,
   "maxTokens": 4096,
   "maxSteps": 20,
   "managementModel": "minimax/minimax-m2.5",
   "screeningModel": "minimax/minimax-m2.5",
   "generalModel": "minimax/minimax-m2.7",
-
   "darwinEnabled": true,
   "darwinWindowDays": 60,
   "darwinRecalcEvery": 5,
@@ -87,29 +84,31 @@
   "darwinFloor": 0.3,
   "darwinCeiling": 2.5,
   "darwinMinSamples": 10,
-
   "agentId": "",
   "publicApiKey": "",
   "agentMeridianApiUrl": "https://api.agentmeridian.xyz/api",
   "lpAgentRelayEnabled": false,
-
+  "meteoraZapEnabled": false,
   "pnlSource": "rpc",
   "pnlRpcUrl": "https://pump.helius-rpc.com",
   "pnlPollIntervalSec": 3,
   "pnlDepositCacheTtlSec": 300,
-
   "gmgnFeeSource": "gmgn",
-
   "chartIndicators": {
     "enabled": false,
     "entryPreset": "supertrend_break",
     "exitPreset": "supertrend_break",
     "rsiLength": 2,
-    "intervals": ["5_MINUTE"],
+    "intervals": [
+      "5_MINUTE"
+    ],
     "candles": 298,
     "rsiOversold": 30,
     "rsiOverbought": 80,
-    "requireAllIntervals": false
+    "requireAllIntervals": false,
+    "negativeDriftFilter": true,
+    "negativeDriftP1hMin": -5,
+    "negativeDriftP1hMax": 0
   },
   "telegramChatId": "",
   "hiveMindUrl": "",

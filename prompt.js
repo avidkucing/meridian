@@ -124,6 +124,7 @@ DEPLOY RULES:
 - downside_pct = ${config.strategy.defaultDownsidePct} (range extends this % below current price). upside_pct = ${config.strategy.defaultUpsidePct} (range extends this % above current price). Always use these exact values — do NOT compute bins_below from volatility.
 - Bin steps must be [${config.screening.minBinStep}-${config.screening.maxBinStep}].
 - Pick ONE pool only if it qualifies. Otherwise explain why none qualify.
+- TIEBREAKER: When multiple candidates qualify, always choose the one with the highest fee_active_tvl_ratio.
 
 ${weightsSummary ? `${weightsSummary}\nPrioritize candidates whose strongest attributes align with high-weight signals.\n\n` : ""}${lessons ? `LESSONS LEARNED:\n${lessons}\n` : ""}Timestamp: ${new Date().toISOString()}
 `;

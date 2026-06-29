@@ -26,7 +26,54 @@ Controlled by the `halalFilter` config flag (default `true`). Set to `false` in 
 
 `getTopCanditatesWithAllSources` replaces the single-source `getTopCandidates`. It queries all three Meteora categories (`new`, `top`, `trending`) with pagination, runs the GMGN discovery pass in parallel, deduplicates by pool address, scores and truncates to the top N, then enriches each surviving candidate with fresh DLMM metrics and token info in a single pass. A unified filter block then applies all rejection criteria once across both sources. The `get_top_candidates` tool exposed to the LLM routes through the same function.
 
-GMGN fee data (`gmgn_total_fee_sol`) is reused across sources — Meteora candidates whose token also appeared in the GMGN pass inherit the fee from the batch instead of making a redundant API call.
+GMGN fee data (`gmgn_total_fee_sol`) is reused across sources — Meteora candidates whose token also appeared in the GMGN pass inherit the fee from the batch instead of making a redundant API call. Pool-health fields that were previously `null` for GMGN-sourced candidates (`active_pct`, `unique_traders`, `swap_count`, `organic_score`) are now populated from the Meteora discovery API response fetched during enrichment, enabling consistent signal snapshots and filter analysis across both sources.
+
+### Meteora Zap SDK (zap in and zap out)
+
+This fork integrates `@meteora-ag/zap-sdk` for atomic double-sided operations, controlled by `config.api.meteoraZapEnabled`.
+
+**Zap in** — when `meteoraZapEnabled=true` and `activeBinsAbove > 0`, deploy goes through `executeMeteoraZapDeploy` which calls `getZapInDlmmDirectParams` and `buildZapInDlmmTransaction`. The SDK handles the SOL→base token swap and liquidity addition in a single atomic transaction set — no separate pre-swap step needed.
+
+**Zap out** — when `meteoraZapEnabled=true` and a position closes, `executeMeteoraAtomicZapOutClose` is attempted before the standard close path. It removes liquidity and swaps the base token back to SOL in one atomic transaction via `zap.zapOut()`. Falls back to standard close + Jupiter auto-swap if the atomic close fails.
+
+**LP Agent relay for close** — at the fork point (`771928a`), close used `shouldUseLpAgentRelay()` (configurable via `lpAgentRelayEnabled`). This fork adds `shouldUseLpAgentRelayForClose()` which always returns false, disabling the relay close path regardless of config. The relay wraps its close transaction with a SOL transfer that `assertNoInitializeBinArrayInstructions` mistakes for a bin-array init instruction, causing otherwise-valid closes to be rejected.
+
+### Pre-deploy SOL→base token swap
+
+When `meteoraZapEnabled=false` and `upside_pct > 0`, the bot manually swaps SOL to the base token before deploying to cover the upper bins:
+
+```
+percentX         = activeBinsAbove / totalBins
+solForX          = finalAmountY × percentX × 1.10   # 10% excess for slippage headroom
+effectiveAmountY = finalAmountY - solForX             # SOL reserved for lower bins
+```
+
+The Meteora SDK receives `xReceived × 10/11` as `maxDepositXAmount` — its on-chain ceiling equals exactly what the wallet holds. The ~9% surplus stays in the wallet and is auto-swapped back to SOL after close. `upside_pct = 0` short-circuits to `activeBinsAbove = 0` before bin-ID math to prevent rounding from requesting a spurious 1-bin-above range and triggering an unintended swap.
+
+### Position memory
+
+`position-memory.js` maintains `position-memory.json` — a per-position enriched history separate from `lessons.json` and `pool-memory.json`. Every position is tracked from open to close with three layers of data:
+
+- **Entry snapshot** (`recordPositionEntry`) — captured at deploy: bin range, bin step, strategy, volatility, fee/TVL ratio, mcap, and a full `signal_snapshot` containing the entry-time chart indicators (RSI, supertrend, Bollinger Bands at 5m and 15m)
+- **Live snapshots** (`appendSnapshot`) — appended each management cycle: PnL, in-range state, active bin, unclaimed fees, OOR minutes, position age
+- **Exit snapshot** (`recordPositionExit`) — captured at close: final PnL in USD and SOL, total fees earned, total minutes in range, and a second `signal_snapshot` with exit-time indicators (same fields prefixed `exit_`)
+
+At close, two additional computed fields are added:
+
+- **Bin utilization** — `bins_crossed / bins_deployed` across all active bin observations during the position's lifetime, with direction (`above` / `below` / `none`)
+- **Exit reason** — normalized from the freeform close string to a structured type: `STOP_LOSS`, `TRAILING_TP`, `TAKE_PROFIT`, `OUT_OF_RANGE`, `LOW_YIELD`, `MAX_LOSS_HOLD`, `MANUAL`
+
+The indicator snapshots (`fetchIndicatorSnapshot`) fetch RSI, supertrend direction/value, and Bollinger Bands (upper/mid/lower) at both 5m and 15m. Entry indicators are always fetched using the on-chain `baseMint` resolved inside `deployPosition()`, so they are accurate even when the LLM passes a wrong mint. All 24 indicator fields are included in `PERFORMANCE_SIGNAL_FIELDS` so they also propagate to `lessons.json`.
+
+### Auto-populate smart wallets from top LPers
+
+`addTopLPersFromCandidates()` in `tools/study.js` runs the top-LPer study across all current screening candidates in parallel and adds any newly discovered LPer wallets to `smart-wallets.json`. Wallets already tracked are skipped via a `seen` set to avoid duplicates.
+
+### Ghost position detection, auto-close, and untracked recovery
+
+**Ghost positions** — when a deploy transaction fails mid-way (position account created but liquidity not added), the resulting zero-value on-chain position is now detected and closed automatically. `tools/pnl.js` sets `deposits_missing=true` when the Meteora PnL API has no deposit history **and** prices are available (distinguishing a ghost from a transient API outage; `pnl_pct_suspicious` fires on either condition). Rule 0 in `getDeterministicCloseRule` fires when `deposits_missing=true` and `total_value_true_usd < $1` and `age_minutes >= 5`. The value and age checks are critical — real deposits can take 5-10+ minutes to index, so a legitimate position briefly shows `deposits_missing=true` while still holding its full liquidity.
+
+**Untracked positions** — when a deploy succeeds on-chain but the executor errors before `trackPosition()`, the position appears as `?/SOL` and is invisible to peak tracking and trailing TP. The management cycle now runs a recovery pass after loading positions: any on-chain position not in `state.json` with `total_value_true_usd > $1` is automatically registered via `trackPosition()` with its creation time backfilled from `meteora.createdAt`. The PnL deploy cooldown check also falls back to `position.age_minutes` when `deployed_at` is absent, so a recovered 90-minute-old position is not treated as brand-new. `trackPosition()` accepts an optional `deployed_at` parameter for callers that backdate registration.
 
 ### Percentage-based range sizing
 
@@ -45,7 +92,7 @@ The management cycle executes `close_position` and `claim_fees` directly via the
 
 ### Direction-aware out-of-range wait
 
-Two separate thresholds replace the single `outOfRangeWaitMinutes`:
+Two separate thresholds replace the single `outOfRangeWaitMinutes`. `markOutOfRange` records `out_of_range_direction` (`above`/`below`) in `state.json` to track which side the position exited from:
 
 | Field | Default | Applies when |
 |---|---|---|
@@ -58,7 +105,7 @@ Instead of hard-failing when a requested deploy range spans uninitialized bin ar
 
 ### Position-count-scaled deploy size
 
-`computeDeployAmount` takes the current open position count and adds `pos × 0.1` to `positionSizePct`, so each additional open position slightly increases the deploy size (compounding acceleration up to `maxPositions - 1`).
+`computeDeployAmount` now accepts a `pos` (current open position count) parameter and uses `positionSizePct + pos × 0.1` as the effective percentage. As more positions are open the wallet balance is smaller (SOL is tied up as LP), so a higher percentage compensates, keeping the absolute deploy amount roughly uniform across all positions up to `maxPositions - 1`.
 
 ### Deploy cooldown for PnL peak tracking
 
@@ -76,28 +123,76 @@ When a trailing take-profit fires (price drops from peak by `trailingDropPct`) b
 
 | Field | Default | Description |
 |---|---|---|
-| `binUtilSlEnabled` | `true` | Bin-utilization stop-loss |
-| `binUtilSlMinPnl` | `0` | SL only fires when PnL < `-N`% (0 = always) |
 | `maxLossHoldMinutes` | `60` | Close at a loss after X minutes — catches slow bleeders |
 
 ### Additional screening filters
 
 | Field | Default | Description |
 |---|---|---|
-| `halalFilter` | `true` | Block non-halal tokens based on narrative and social links |
-| `athFilterPct` | `null` | Only deploy if price is at least N% below ATH |
+| `localAthFilterPct` | `0` | Only deploy if price is at least N% below the last 6h Meteora OHLCV high |
 | `maxVolatilityToDeploy` | `null` | Block pools above this volatility |
 | `minFeeChangePct` | `-50` | Reject pools where fee momentum fell more than N% |
 | `minVolumeChangePct` | `null` | Reject declining-volume pools |
 | `maxPriceChange1hPct` | `null` | Reject pump tops by 1h price change |
+| `extremeEntryFilterEnabled` | `false` | Block extreme 1h pump/dump entries when RSI is stretched and 5m supertrend agrees |
+| `extremeEntryP1hPct` | `30` | Absolute 1h move threshold used by the extreme entry filter |
+| `negativeDriftFilter` | `true` | Reject pools where 1h price change is in `[negativeDriftP1hMin, negativeDriftP1hMax)` — slow bleeders with no momentum |
+| `negativeDriftP1hMin` | `-5` | Lower bound of the negative drift window |
+| `negativeDriftP1hMax` | `0` | Upper bound of the negative drift window (exclusive) |
 
 ### Chart indicator additions
 
+New indicator rules added on top of the upstream set:
+
 | Field | Default | Description |
 |---|---|---|
-| `minDipPct` | `25` | Require at least N% pullback from recent high before entry |
-| `dipLookbackCandles` | `36` | Lookback window for dip check |
-| `bearCandleFilter` | `true` | Block entry on small bearish candle in moderate-pump range |
-| `rsiMomentum` | `55` | Minimum RSI for momentum confirmation |
-| `rsiFloor` | `16` | RSI floor (oversold guard) |
+| `minDipPct` | `25` | Require at least N% pullback from recent high before entry (`dip_entry` rule) |
+| `dipLookbackCandles` | `36` | Lookback window (× 5m candles) for dip high calculation |
+| `bearCandleFilter` | `true` | Block entry when the last 5m candle is flat/bearish in a moderate-pump range — stale momentum guard |
+| `rsiMomentum` | `55` | Minimum RSI for `supertrend_or_momentum` confirmation |
+| `rsiFloor` | `16` | RSI floor for `dip_entry` — blocks freefall entries where ST is bullish but RSI is oversold |
+
+The `no_falling_knife` exit rule (fires when ST flips bearish or RSI reaches overbought) is implemented via `checkLastCandleMomentum` in `tools/chart-indicators.js`.
+
+### SOL mode PnL computation fix
+
+In SOL mode (`config.management.solMode = true`), `getClosedPnlValue` and `getClosedPnlPct` now compute PnL directly from the on-chain Meteora position flows:
+
+```
+pnl_sol = (allTimeWithdrawals.total.sol + allTimeFees.total.sol) - allTimeDeposits.total.sol
+pnl_pct = pnl_sol / allTimeDeposits.total.sol × 100
+```
+
+The previous path used `pnlSol` from the Meteora API, which derives SOL value from USD amounts divided by spot price at query time. This produces wildly wrong results when the base token has crashed in USD terms (the API reports a large USD loss and converts it to SOL at the current low price, giving a SOL PnL far more negative than the real on-chain balance change). Falls back to the API-reported value only when on-chain deposit data is unavailable.
+
+### PnL poller deduplication
+
+The PnL poller has always triggered `runManagementCycle()` when an exit condition fires. What changed: the deduplication mechanism switched from a single global timestamp (`_pollTriggeredAt`, cooled for one `managementIntervalMin`) to a per-position `Set` (`_pollTriggeredPositions`). The set entry is cleared in a `.finally()` callback when the management run completes, so different positions can trigger independent cycles without one blocking another.
+
+The poller also skips positions within `PNL_DEPLOY_COOLDOWN_MS` (60 seconds of `deployed_at`) — matching the main management cycle — to avoid false exits from unreliable immediately-post-deploy PnL reads.
+
+### Low-yield exit refinements
+
+**Rule 5 (low yield) in `getDeterministicCloseRule`** now only fires when `totalPositions >= maxPositions`. Below capacity, low-yield positions are kept — the yield floor is an at-capacity tiebreaker, not a universal eviction rule.
+
+**Low-yield check in `updatePnlAndCheckExits`** (state.js, called by the PnL poller) now requires `pnl_pct > 0`. A position already at a loss won't be closed solely because fee yield is below the floor.
+
+**Low-yield pool cooldown removed** — upstream applied a 4-hour pool cooldown in `pool-memory.js` whenever a position closed with reason `"low yield"`. This fork removes that cooldown; normal OOR-based cooldowns still apply.
+
+### Pool memory no longer gates deployment
+
+The screener prompt no longer treats pool memory as a blocking signal. The upstream rule "Past losses or problems → strong skip signal" has been replaced: pool memory history (win rate, prior losses, deploy count) is context only — it does not override a candidate that passed all system filters. If only one candidate survives screening, it is evaluated on its own merits and deployed if it passes; the old rule that said to skip lone candidates by default is removed.
+
+### DLMM position simulator
+
+`tools/simulator.js` estimates position performance without RPC or SDK calls — pure math against the Meteora REST API.
+
+- **`simulatePosition`** — computes IL, fee income, and net PnL for a hypothetical position given a price path and hold time. Uses current pool price and pool config.
+- **`replayPosition`** — walks historical OHLCV candles fetched from the Meteora pool API, simulating in-range time, fee accumulation, and IL to reconstruct how a position would have performed over a past window.
+
+Both functions use strategy-weighted bin distributions matching the SDK (bid_ask vs spot) to estimate how liquidity is distributed across bins at each price point.
+
+### PVP filter made configurable
+
+The screener prompt's PVP block previously always warned against pools where another mint shares the exact same symbol with meaningful TVL and trading activity. This behavior is now gated on `config.screening.avoidPvpSymbols`. When `avoidPvpSymbols` is false, PVP rivals are allowed — the screener is instructed to pick the stronger variant by volume, smart wallets, and fee metrics rather than skipping both.
 

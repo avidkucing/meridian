@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meridian Dashboard</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%2300d4ff' opacity='.2'/><circle cx='16' cy='16' r='6' fill='%2300d4ff'/></svg>" />
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <svg class="logo-icon" viewBox="0 0 32 32" width="28" height="28">
+      <circle cx="16" cy="16" r="14" fill="#00d4ff" opacity=".15"/>
+      <circle cx="16" cy="16" r="6" fill="#00d4ff"/>
+    </svg>
+    <h1 class="title">Meridian</h1>
+    <span class="subtitle">DLMM Agent</span>
+  </div>
+  <div class="header-right">
+    <span class="wallet-badge" id="wallet-badge">—</span>
+    <div class="status-dot" id="ws-dot" title="WebSocket disconnected"></div>
+    <span class="sync-time" id="sync-time">never synced</span>
+    <button class="btn btn-ghost" onclick="refreshAll()">↻ Refresh</button>
+  </div>
+</header>
+
+<!-- Summary Cards -->
+<section class="summary-cards" id="summary-cards">
+  <div class="card metric-card">
+    <div class="metric-label">Total Value Locked</div>
+    <div class="metric-value" id="m-total-value">—</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Total Unclaimed Fees</div>
+    <div class="metric-value" id="m-total-fees">—</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Combined PnL</div>
+    <div class="metric-value" id="m-total-pnl">—</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Open Positions</div>
+    <div class="metric-value" id="m-open-count">—</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Closed Positions</div>
+    <div class="metric-value" id="m-closed-count">—</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Win Rate</div>
+    <div class="metric-value" id="m-win-rate">—</div>
+  </div>
+</section>
+
+<!-- Tabs -->
+<nav class="tabs">
+  <button class="tab active" data-tab="current" onclick="switchTab('current')">Open Positions</button>
+  <button class="tab" data-tab="history" onclick="switchTab('history')">Closed Positions</button>
+</nav>
+
+<!-- Current Positions -->
+<div id="tab-current" class="tab-panel active">
+  <div class="table-controls">
+    <span class="table-count" id="current-count">0 positions</span>
+  </div>
+  <div class="table-wrap">
+    <table class="pos-table" id="current-table">
+      <thead>
+        <tr>
+          <th>Pair</th>
+          <th class="num">Value</th>
+          <th class="num">PnL</th>
+          <th class="num">Fees</th>
+          <th class="num">Fee/TVL</th>
+          <th class="num">Age</th>
+          <th class="num">OOR</th>
+          <th>Bins</th>
+          <th class="num">Util %</th>
+          <th>Range</th>
+        </tr>
+      </thead>
+      <tbody id="current-tbody"><tr><td colspan="11" class="empty-state">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Closed Positions -->
+<div id="tab-history" class="tab-panel">
+  <div class="table-controls">
+    <span class="table-count" id="history-count">0 closed</span>
+    <div class="filter-bar">
+      <div class="filter-pills">
+        <button class="pill active" data-outcome="all" onclick="setOutcomeFilter('all')">All</button>
+        <button class="pill" data-outcome="win" onclick="setOutcomeFilter('win')">Wins</button>
+        <button class="pill" data-outcome="loss" onclick="setOutcomeFilter('loss')">Losses</button>
+        <button class="pill" data-outcome="other" onclick="setOutcomeFilter('other')">Other</button>
+      </div>
+      <div class="filter-range">
+        <input class="range-input" id="filter-pnl-min" type="number" placeholder="Min %" step="0.1" oninput="applyFilters()" />
+        <span class="range-sep">—</span>
+        <input class="range-input" id="filter-pnl-max" type="number" placeholder="Max %" step="0.1" oninput="applyFilters()" />
+        <button class="pill" id="filter-clear" onclick="clearFilters()" style="display:none">✕ Clear</button>
+      </div>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="pos-table" id="history-table">
+      <thead>
+        <tr>
+          <th>Pair</th>
+          <th class="num">PnL %</th>
+          <th class="num">PnL USD</th>
+          <th class="num">PnL SOL</th>
+          <th class="num">Max DD</th>
+          <th class="num">Hold</th>
+          <th class="num">Range Eff.</th>
+          <th class="num">Util %</th>
+          <th>Opened</th>
+          <th>Closed</th>
+          <th>Exit Type</th>
+          <th>Close Reason</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody"><tr><td colspan="12" class="empty-state">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="pagination" id="history-pagination"></div>
+</div>
+
+<!-- Entry/Exit Snapshot Modal -->
+<div id="snapshot-modal" class="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="modal-title">Snapshot</h2>
+      <button class="btn-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

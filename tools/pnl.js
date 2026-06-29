@@ -195,7 +195,16 @@ function buildPosition(f, prices, solUsd, meteora, solMode) {
   //  - missing Meteora deposits → 0 cost basis → garbage pnl / inflated value
   const holdsTokenX = xHuman > 0 || feeXHuman > 0;
   const priceMissing = !(solUsd > 0) || (holdsTokenX && !!f.baseMint && !(priceX > 0));
-  const depositsMissing = (solMode ? depositsSol : depositsUsd) <= 0;
+  let depositsMissing = (solMode ? depositsSol : depositsUsd) <= 0;
+  // If SOL deposits are missing but USD deposits are available, fall back to USD
+  // after SOL_DEPOSIT_FALLBACK_MS to unblock stop-loss / trailing-TP.
+  // If SOL deposits are missing but USD deposits are available, fall back to USD
+  // so stop-loss / trailing-TP are not permanently suppressed.
+  let effectivePct = ourPct;
+  if (depositsMissing && solMode && depositsUsd > 0) {
+    depositsMissing = false;
+    effectivePct = pctUsd;
+  }
   const pnlPctSuspicious = priceMissing || depositsMissing;
   if (pnlPctSuspicious) {
     const lastWarn = _suspiciousWarnAt.get(f.position) ?? 0;
@@ -209,10 +218,19 @@ function buildPosition(f, prices, solUsd, meteora, solMode) {
     ? f.active >= f.lower && f.active <= f.upper
     : (meteora ? !meteora.isOutOfRange : true);
 
-  if (inRange) markInRange(f.position);
-  else markOutOfRange(f.position);
-
   const tracked = getTrackedPosition(f.position);
+  if (inRange) markInRange(f.position);
+  else {
+    const effectiveUpper  = f.upper  ?? tracked?.bin_range?.max;
+    const effectiveLower  = f.lower  ?? tracked?.bin_range?.min;
+    const effectiveActive = f.active ?? null;
+    const oorDir = effectiveActive != null && effectiveUpper != null && effectiveActive > effectiveUpper
+      ? 'above'
+      : effectiveActive != null && effectiveLower != null && effectiveActive < effectiveLower
+        ? 'below'
+        : null;
+    markOutOfRange(f.position, oorDir);
+  }
   const ageFromState = tracked?.deployed_at
     ? Math.floor((Date.now() - new Date(tracked.deployed_at).getTime()) / 60000)
     : null;
@@ -235,10 +253,11 @@ function buildPosition(f, prices, solUsd, meteora, solMode) {
     collected_fees_true_usd: round(claimedUsd),
     pnl_usd:            round(solMode ? pnlSol : pnlUsd),
     pnl_true_usd:       round(pnlUsd),
-    pnl_pct:            round(ourPct, 2),
-    pnl_pct_derived:    round(ourPct, 2),
+    pnl_pct:            round(effectivePct, 2),
+    pnl_pct_derived:    round(effectivePct, 2),
     pnl_pct_diff:       pnlPctDiff != null ? round(pnlPctDiff, 2) : null,
     pnl_pct_suspicious: !!pnlPctSuspicious,
+    deposits_missing:   depositsMissing && !priceMissing,
     fee_per_tvl_24h:    meteora ? Math.round(safeNum(meteora.feePerTvl24h) * 100) / 100 : null,
     age_minutes:        ageMinutes,
     minutes_out_of_range: minutesOutOfRange(f.position),

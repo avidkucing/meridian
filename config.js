@@ -107,6 +107,8 @@ export const config = {
     minFeeChangePct:    u.minFeeChangePct    ?? -50,  // reject pools where fee_change_pct < this; null = disabled
     minVolumeChangePct: u.minVolumeChangePct ?? null, // null = disabled; e.g. 0 = block pools where volume is declining
     maxPriceChange1hPct: u.maxPriceChange1hPct ?? null, // reject pools where 1h price change > this (pump top); null = disabled
+    extremeEntryFilterEnabled: u.extremeEntryFilterEnabled ?? false, // reject extreme 1h moves when RSI is stretched and 5m ST agrees with direction
+    extremeEntryP1hPct: u.extremeEntryP1hPct ?? 30, // absolute 1h move threshold for extremeEntryFilterEnabled
     halalFilter:         u.halalFilter         ?? true,  // block tokens whose narrative/links describe haram activities
   },
 
@@ -197,8 +199,6 @@ export const config = {
     trailingTakeProfit:    u.trailingTakeProfit    ?? true,
     trailingTriggerPct:    u.trailingTriggerPct    ?? 3,    // activate trailing at X% PnL
     trailingDropPct:       u.trailingDropPct       ?? 1.5,  // close when drops X% from peak
-    binUtilSlEnabled:       u.binUtilSlEnabled     ?? true, // bin-util SL active
-    binUtilSlMinPnl:        u.binUtilSlMinPnl      ?? 0,   // floor: don't fire unless PnL < -N% (0=disabled)
     pnlSanityMaxDiffPct:   u.pnlSanityMaxDiffPct   ?? 5,    // max allowed diff between reported and derived pnl % before ignoring a tick
     // SOL mode — positions, PnL, and balances reported in SOL instead of USD
     solMode:               u.solMode               ?? false,
@@ -261,6 +261,7 @@ export const config = {
     url: nonEmptyString(u.agentMeridianApiUrl, process.env.AGENT_MERIDIAN_API_URL, DEFAULT_AGENT_MERIDIAN_API_URL),
     publicApiKey: nonEmptyString(u.publicApiKey, process.env.PUBLIC_API_KEY, DEFAULT_AGENT_MERIDIAN_PUBLIC_KEY),
     lpAgentRelayEnabled: u.lpAgentRelayEnabled ?? false,
+    meteoraZapEnabled: u.meteoraZapEnabled ?? false,
   },
 
   // ─── PnL fetcher / poller (public infra: RPC + Meteora deposits + Jupiter) ──
@@ -299,12 +300,12 @@ export const config = {
 
   jupiter: {
     apiKey: process.env.JUPITER_API_KEY ?? "",
-    // referralAccount:
-    //   process.env.JUPITER_REFERRAL_ACCOUNT ??
-    //   "9MzhDUnq3KxecyPzvhguQMMPbooXQ3VAoCMPDnoijwey",
-    // referralFeeBps: Number(
-    //   process.env.JUPITER_REFERRAL_FEE_BPS ?? 50,
-    // ),
+    referralAccount:
+      process.env.JUPITER_REFERRAL_ACCOUNT ??
+      "9MzhDUnq3KxecyPzvhguQMMPbooXQ3VAoCMPDnoijwey",
+    referralFeeBps: Number(
+      process.env.JUPITER_REFERRAL_FEE_BPS ?? 50,
+    ),
   },
 
   indicators: {
@@ -331,6 +332,11 @@ export const config = {
     bearCandleMaxBodyPct: indicatorUserConfig.bearCandleMaxBodyPct ?? 3,
     bearCandleP1hMin:     indicatorUserConfig.bearCandleP1hMin     ?? 0,
     bearCandleP1hMax:     indicatorUserConfig.bearCandleP1hMax     ?? 30,
+    // Negative-drift guard: block entry when 1h price change is mildly red.
+    // Historical position-memory test: -5 <= p1h < 0 improved expectancy.
+    negativeDriftFilter:  indicatorUserConfig.negativeDriftFilter  ?? true,
+    negativeDriftP1hMin:  indicatorUserConfig.negativeDriftP1hMin  ?? -5,
+    negativeDriftP1hMax:  indicatorUserConfig.negativeDriftP1hMax  ?? 0,
   },
 };
 
@@ -390,6 +396,7 @@ export function reloadScreeningThresholds() {
     if (fresh.category          != null) s.category          = fresh.category;
     if (fresh.minTokenAgeHours  !== undefined) s.minTokenAgeHours = fresh.minTokenAgeHours;
     if (fresh.maxTokenAgeHours  !== undefined) s.maxTokenAgeHours = fresh.maxTokenAgeHours;
+    if (fresh.athFilterPct      !== undefined) s.athFilterPct = fresh.athFilterPct;
     if (fresh.avoidPvpSymbols   !== undefined) s.avoidPvpSymbols = fresh.avoidPvpSymbols;
     if (fresh.blockPvpSymbols   !== undefined) s.blockPvpSymbols = fresh.blockPvpSymbols;
     if (fresh.maxBotHoldersPct  != null) s.maxBotHoldersPct = fresh.maxBotHoldersPct;
@@ -398,6 +405,8 @@ export function reloadScreeningThresholds() {
     if (fresh.minFeeChangePct      !== undefined) s.minFeeChangePct      = fresh.minFeeChangePct;
     if (fresh.minVolumeChangePct   !== undefined) s.minVolumeChangePct   = fresh.minVolumeChangePct;
     if (fresh.maxPriceChange1hPct  !== undefined) s.maxPriceChange1hPct  = fresh.maxPriceChange1hPct;
+    if (fresh.extremeEntryFilterEnabled !== undefined) s.extremeEntryFilterEnabled = fresh.extremeEntryFilterEnabled;
+    if (fresh.extremeEntryP1hPct   !== undefined) s.extremeEntryP1hPct   = fresh.extremeEntryP1hPct;
     if (fresh.maxRiskLevel         !== undefined) s.maxRiskLevel         = fresh.maxRiskLevel;
     if (fresh.defaultDownsidePct != null) config.strategy.defaultDownsidePct = Math.max(1, Number(fresh.defaultDownsidePct));
     if (fresh.defaultUpsidePct   != null) config.strategy.defaultUpsidePct   = Math.max(0, Number(fresh.defaultUpsidePct));
