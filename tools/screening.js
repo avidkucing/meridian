@@ -3,7 +3,7 @@ import { isBlacklisted } from "../token-blacklist.js";
 import { isDevBlocked, getBlockedDevs } from "../dev-blocklist.js";
 import { log } from "../logger.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
-import { confirmIndicatorPreset, checkDipFromHigh, checkLastCandleMomentum } from "./chart-indicators.js";
+import { checkEntryConditions } from "./chart-indicators.js";
 import { discoverGmgnPools, fetchGmgnTokenFeeSol } from "./gmgn.js";
 
 const DATAPI_JUP = "https://datapi.jup.ag/v1";
@@ -764,8 +764,6 @@ export async function getTopCanditatesWithAllSources({ limit = 10, positions = [
   const minFeeChangePct     = config.screening.minFeeChangePct != null ? Number(config.screening.minFeeChangePct) : null;
   const minVolumeChangePct  = config.screening.minVolumeChangePct != null ? Number(config.screening.minVolumeChangePct) : null;
   const maxPriceChange1hPct = config.screening.maxPriceChange1hPct != null ? Number(config.screening.maxPriceChange1hPct) : null;
-  const extremeEntryFilterEnabled = config.screening.extremeEntryFilterEnabled === true;
-  const extremeEntryP1hPct = config.screening.extremeEntryP1hPct != null ? Number(config.screening.extremeEntryP1hPct) : 30;
   const maxVolatility       = config.screening.maxVolatilityToDeploy != null ? Number(config.screening.maxVolatilityToDeploy) : null;
   const maxTop10Pct         = config.screening.maxTop10Pct != null ? Number(config.screening.maxTop10Pct) : null;
   const maxBotHoldersPct    = config.screening.maxBotHoldersPct != null ? Number(config.screening.maxBotHoldersPct) : null;
@@ -911,16 +909,9 @@ export async function getTopCanditatesWithAllSources({ limit = 10, positions = [
       return false;
     }
 
-    if (config.indicators.negativeDriftFilter && Number.isFinite(priceChange1h)) {
-      const driftMin = config.indicators.negativeDriftP1hMin ?? -5;
-      const driftMax = config.indicators.negativeDriftP1hMax ?? 0;
-      if (priceChange1h >= driftMin && priceChange1h < driftMax) {
-        log("screening", `Negative drift filter: dropped ${pool.name} — price_change_1h ${priceChange1h}% in [${driftMin}, ${driftMax})`);
-        filteredOut.push({ name: pool.name, reason: `negative drift: price_change_1h ${priceChange1h}% in [${driftMin}, ${driftMax})` });
-        return false;
-      }
-    }
-
+    // Negative drift, bear-candle momentum, extreme-entry, candle/dip, and falling-knife
+    // checks now run together via checkEntryConditions() inside getTopCandidates() —
+    // see the consolidated call there, which this function delegates to per source.
 
     if (config.screening.halalFilter) {
       const halal = checkHalal({
@@ -942,42 +933,6 @@ export async function getTopCanditatesWithAllSources({ limit = 10, positions = [
   if (filteredOut.length > 0) {
     results.all_filtered.push(...filteredOut);
     results.filtered_examples.push(...filteredOut.slice(0, 3));
-  }
-
-  // Bear-candle momentum filter — runs after enrichment so pool._ti?.stats_1h?.price_change is available
-  if (config.indicators.bearCandleFilter && results.candidates.length > 0) {
-    const maxBodyPct = config.indicators.bearCandleMaxBodyPct ?? 3;
-    const p1hMin     = config.indicators.bearCandleP1hMin ?? 0;
-    const p1hMax     = config.indicators.bearCandleP1hMax ?? 30;
-    const momentumChecks = await Promise.all(
-      results.candidates.map(async (pool) => {
-        const p1h = parseFloat(pool._ti?.stats_1h?.price_change ?? 0);
-        try {
-          const check = await checkLastCandleMomentum(pool.pool, p1h, { maxBodyPct, p1hMin, p1hMax });
-          return { pool: pool.pool, check };
-        } catch (error) {
-          return { pool: pool.pool, check: { confirmed: true, reason: `Momentum check unavailable: ${error.message}` } };
-        }
-      }),
-    );
-    const momentumByPool = new Map(momentumChecks.map((e) => [e.pool, e.check]));
-    const before = results.candidates.length;
-    const momentumOut = [];
-    results.candidates = results.candidates.filter((pool) => {
-      const check = momentumByPool.get(pool.pool);
-      pool.momentum_check = check || null;
-      if (!check || check.confirmed) return true;
-      pushFilteredReason(momentumOut, pool, `momentum filter: ${check.reason}`);
-      log("screening", `Momentum filter rejected ${pool.name || pool.pool.slice(0, 8)}: ${check.reason}`);
-      return false;
-    });
-    if (momentumOut.length > 0) {
-      results.all_filtered.push(...momentumOut);
-      results.filtered_examples.push(...momentumOut.slice(0, 3));
-    }
-    if (results.candidates.length < before) {
-      log("screening", `Momentum filter removed ${before - results.candidates.length} candidate(s) (bear candle <${maxBodyPct}% body + p1h ${p1hMin}–${p1hMax}%)`);
-    }
   }
 
   return results;
@@ -1025,8 +980,6 @@ export async function getTopCandidates({
   const { positions } = await getMyPositions();
   const occupiedPools = new Set(positions.map(p => p.pool));
   const occupiedMints = new Set(positions.map(p => p.base_mint).filter(Boolean));
-  const extremeEntryFilterEnabled = config.screening.extremeEntryFilterEnabled === true;
-  const extremeEntryP1hPct = config.screening.extremeEntryP1hPct != null ? Number(config.screening.extremeEntryP1hPct) : 30;
   const minTvl = source === "gmgn"
     ? Number(config.gmgn.minTvl ?? config.screening.minTvl ?? 0)
     : Number(config.screening.minTvl ?? 0);
@@ -1079,117 +1032,46 @@ export async function getTopCandidates({
     }
   }
 
-  if (config.indicators.enabled && eligible.length > 0) {
-    const confirmations = await Promise.all(
+  // Consolidated entry gate — one OHLCV fetch + one indicator fetch per candidate,
+  // covering candle-body, dip, bear-candle momentum, negative-drift, extreme-entry,
+  // and no_falling_knife together. Same function is called again in dlmm.js right
+  // before deploy, so deploys that skip fresh screening (staged-signal path) still
+  // get gated — the 5-minute cache means this doesn't double-fetch when they line up.
+  if (eligible.length > 0) {
+    const entryChecks = await Promise.all(
       eligible.map(async (pool) => {
         try {
-          const confirmation = await confirmIndicatorPreset({
-            mint: pool.base?.mint,
-            side: "entry",
-          });
-          return { pool: pool.pool, confirmation };
-        } catch (error) {
-          return {
-            pool: pool.pool,
-            confirmation: {
-              enabled: true,
-              confirmed: true,
-              skipped: true,
-              reason: `Indicator confirmation unavailable: ${error.message}`,
-              intervals: [],
-            },
-          };
-        }
-      }),
-    );
-    const confirmationByPool = new Map(confirmations.map((entry) => [entry.pool, entry.confirmation]));
-    const before = eligible.length;
-    const confirmedEligible = eligible.filter((pool) => {
-      const confirmation = confirmationByPool.get(pool.pool);
-      pool.indicator_confirmation = confirmation || null;
-      // Backfill raw indicator fields so post-confirmation filters (e.g. extreme entry) can read them
-      for (const intv of (confirmation?.intervals ?? [])) {
-        if (!intv.ok || !intv.signal) continue;
-        if (intv.interval === "5_MINUTE") {
-          if (pool.rsi_5m == null) pool.rsi_5m = intv.signal.rsi ?? null;
-          if (pool.st_dir_5m == null) pool.st_dir_5m = intv.signal.supertrendDirection ?? null;
-        } else if (intv.interval === "15_MINUTE") {
-          if (pool.rsi_15m == null) pool.rsi_15m = intv.signal.rsi ?? null;
-          if (pool.st_dir_15m == null) pool.st_dir_15m = intv.signal.supertrendDirection ?? null;
-        }
-      }
-      // Propagate 15m data to 5m slots when only 15m intervals are configured
-      if (pool.st_dir_5m == null && pool.st_dir_15m != null) pool.st_dir_5m = pool.st_dir_15m;
-      if (pool.rsi_5m == null && pool.rsi_15m != null) pool.rsi_5m = pool.rsi_15m;
-      if (!confirmation || confirmation.confirmed) return true;
-      pushFilteredReason(filteredOut, pool, `indicator reject: ${confirmation.reason}`);
-      log("screening", `Indicator rejected ${pool.name} (${pool.pool.slice(0, 8)}): ${confirmation.reason}`);
-      return false;
-    });
-    eligible.splice(0, eligible.length, ...confirmedEligible);
-    if (eligible.length < before) {
-      log("screening", `Indicator confirmation removed ${before - eligible.length} candidate(s)`);
-    }
-  }
-
-  // Extreme entry filter — runs after indicator confirmation so rsi_15m/st_dir_5m are populated.
-  // Blocks entries where price pumped/dumped hard AND RSI + supertrend confirm the overextension.
-  if (extremeEntryFilterEnabled && Number.isFinite(extremeEntryP1hPct) && extremeEntryP1hPct > 0 && eligible.length > 0) {
-    const overbought = Number(config.indicators.rsiOverbought ?? 80);
-    const oversold = Number(config.indicators.rsiOversold ?? 30);
-    const beforeExt = eligible.length;
-    eligible.splice(0, eligible.length, ...eligible.filter((pool) => {
-      const p1h = pool.price_change_1h == null ? null : Number(pool.price_change_1h);
-      if (!Number.isFinite(p1h)) return true;
-      const rsi15 = pool.rsi_15m == null ? null : Number(pool.rsi_15m);
-      const st5 = pool.st_dir_5m ?? null;
-      const rejectPump = p1h > extremeEntryP1hPct && Number.isFinite(rsi15) && rsi15 >= overbought && st5 === "bullish";
-      const rejectDump = p1h < -extremeEntryP1hPct && Number.isFinite(rsi15) && rsi15 <= oversold && st5 === "bearish";
-      if (rejectPump || rejectDump) {
-        const side = rejectPump ? "pump" : "dump";
-        log("screening", `Extreme entry filter: dropped ${pool.name} — ${side} p1h=${p1h}% rsi15=${rsi15} st5=${st5 ?? "n/a"}`);
-        pushFilteredReason(filteredOut, pool, `extreme entry ${side}: p1h ${p1h}% rsi15 ${rsi15} st5 ${st5 ?? "n/a"}`);
-        return false;
-      }
-      return true;
-    }));
-    if (eligible.length < beforeExt) {
-      log("screening", `Extreme entry filter removed ${beforeExt - eligible.length} candidate(s)`);
-    }
-  }
-
-  // Dip-from-high filter — only pass pools where price has pulled back ≥ minDipPct%
-  // from the 20-candle high. Runs regardless of config.indicators.enabled.
-  const minDipPct = config.indicators.minDipPct ?? 0;
-  if (minDipPct > 0 && eligible.length > 0) {
-    const dipLookback = config.indicators.dipLookbackCandles ?? 20;
-    const dipChecks = await Promise.all(
-      eligible.map(async (pool) => {
-        try {
-          const check = await checkDipFromHigh(pool.pool, {
-            minDipPct,
-            dipLookbackCandles: dipLookback,
+          const check = await checkEntryConditions(pool.pool, pool.base?.mint, {
+            p1hOverride: pool.price_change_1h,
           });
           return { pool: pool.pool, check };
         } catch (error) {
-          // Non-blocking: if OHLCV is unavailable, let the pool through
-          return { pool: pool.pool, check: { confirmed: true, reason: `Dip check unavailable: ${error.message}` } };
+          return { pool: pool.pool, check: { confirmed: true, reason: `Entry conditions check unavailable: ${error.message}`, checks: {} } };
         }
       }),
     );
-    const dipCheckByPool = new Map(dipChecks.map((e) => [e.pool, e.check]));
+    const entryCheckByPool = new Map(entryChecks.map((e) => [e.pool, e.check]));
     const before = eligible.length;
     eligible.splice(0, eligible.length, ...eligible.filter((pool) => {
-      const check = dipCheckByPool.get(pool.pool);
-      pool.dip_check = check || null;
+      const check = entryCheckByPool.get(pool.pool);
+      pool.entry_conditions = check || null;
       if (!check || check.confirmed) return true;
-      pushFilteredReason(filteredOut, pool, `dip filter: ${check.reason}`);
-      log("screening", `Dip filter rejected ${pool.name || pool.pool.slice(0, 8)}: ${check.reason}`);
+      pushFilteredReason(filteredOut, pool, `entry conditions: ${check.reason}`);
+      log("screening", `Entry conditions rejected ${pool.name || pool.pool.slice(0, 8)}: ${check.reason}`);
       return false;
     }));
     if (eligible.length < before) {
-      log("screening", `Dip filter removed ${before - eligible.length} candidate(s) (need ≥${minDipPct}% below ${dipLookback}-candle high)`);
+      log("screening", `Entry conditions filter removed ${before - eligible.length} candidate(s)`);
     }
+  }
+
+  if (eligible.length > 0) {
+    const summary = eligible.map((pool) => {
+      const ec = pool.entry_conditions;
+      const ecStr = ec ? `entry=${ec.confirmed ? "PASS" : "FAIL"}(${ec.reason})` : "entry=n/a";
+      return `${pool.name || pool.pool.slice(0, 8)} [${ecStr}]`;
+    }).join("; ");
+    log("screening", `Final candidate list (${eligible.length}): ${summary}`);
   }
 
   return {

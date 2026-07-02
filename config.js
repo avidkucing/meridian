@@ -107,8 +107,6 @@ export const config = {
     minFeeChangePct:    u.minFeeChangePct    ?? -50,  // reject pools where fee_change_pct < this; null = disabled
     minVolumeChangePct: u.minVolumeChangePct ?? null, // null = disabled; e.g. 0 = block pools where volume is declining
     maxPriceChange1hPct: u.maxPriceChange1hPct ?? null, // reject pools where 1h price change > this (pump top); null = disabled
-    extremeEntryFilterEnabled: u.extremeEntryFilterEnabled ?? false, // reject extreme 1h moves when RSI is stretched and 5m ST agrees with direction
-    extremeEntryP1hPct: u.extremeEntryP1hPct ?? 30, // absolute 1h move threshold for extremeEntryFilterEnabled
     halalFilter:         u.halalFilter         ?? true,  // block tokens whose narrative/links describe haram activities
   },
 
@@ -218,6 +216,12 @@ export const config = {
     managementIntervalMin:  u.managementIntervalMin  ?? 10,
     screeningIntervalMin:   u.screeningIntervalMin   ?? 30,
     healthCheckIntervalMin: u.healthCheckIntervalMin ?? 60,
+    // Skip screening (no new deploys) during this local-hour window. Backtest on
+    // 06-28..06-30 position data showed this window had the worst win rate/largest
+    // stop-losses. Hours are in screenBlockTimezoneOffsetHours, wraps past midnight.
+    screenBlockStartHour: u.screenBlockStartHour ?? 23,
+    screenBlockEndHour:   u.screenBlockEndHour   ?? 2,
+    screenBlockTimezoneOffsetHours: u.screenBlockTimezoneOffsetHours ?? 7,
   },
 
   // ─── LLM Settings ──────────────────────
@@ -324,8 +328,16 @@ export const config = {
     requireAllIntervals: indicatorUserConfig.requireAllIntervals ?? false,
     // Minimum % price must have dipped below the 20-candle high before deploying.
     // 0 = disabled. 10 = require at least 10% pullback from recent high.
-    minDipPct: indicatorUserConfig.minDipPct ?? 25,
+    // Disabled by default (0) — backtest on 3-day position data showed the dip
+    // requirement excluded as many good trades as bad ones; the candle-calm check
+    // below does virtually all the useful filtering on its own.
+    minDipPct: indicatorUserConfig.minDipPct ?? 0,
     dipLookbackCandles: indicatorUserConfig.dipLookbackCandles ?? 36,
+    // Block entry if any candle body in the last N candles exceeds X%. 0 = disabled.
+    // Standalone gate (no dip requirement needed) — 20c/15% was the best backtested
+    // tradeoff of stop-losses caught vs. winners blocked over 3 days of live positions.
+    bigCandleWindow: indicatorUserConfig.bigCandleWindow ?? 20,
+    bigCandleMaxBodyPct: indicatorUserConfig.bigCandleMaxBodyPct ?? 15,
     // Bear-candle momentum filter: block entry when last 5m candle is small bearish
     // AND p1h is in the moderate-pump range. Set bearCandleFilter=false to disable.
     bearCandleFilter:     indicatorUserConfig.bearCandleFilter     ?? true,
@@ -337,6 +349,15 @@ export const config = {
     negativeDriftFilter:  indicatorUserConfig.negativeDriftFilter  ?? true,
     negativeDriftP1hMin:  indicatorUserConfig.negativeDriftP1hMin  ?? -5,
     negativeDriftP1hMax:  indicatorUserConfig.negativeDriftP1hMax  ?? 0,
+    // Extreme-entry guard: block entry when price pumped/dumped hard AND RSI+ST confirm
+    // the overextension (e.g. p1h > +30% with RSI overbought and 5m ST bullish = late pump).
+    extremeEntryFilterEnabled: indicatorUserConfig.extremeEntryFilterEnabled ?? false,
+    extremeEntryP1hPct:        indicatorUserConfig.extremeEntryP1hPct        ?? 30,
+    // Blocking toggles — set false to keep a filter computing + logged (tag "entry_observe")
+    // without actually rejecting candidates, to gather fresh hit/miss data before re-enabling.
+    bearCandleBlocking:    indicatorUserConfig.bearCandleBlocking    ?? true,
+    negativeDriftBlocking: indicatorUserConfig.negativeDriftBlocking ?? true,
+    fallingKnifeBlocking:  indicatorUserConfig.fallingKnifeBlocking  ?? true,
   },
 };
 
@@ -405,8 +426,6 @@ export function reloadScreeningThresholds() {
     if (fresh.minFeeChangePct      !== undefined) s.minFeeChangePct      = fresh.minFeeChangePct;
     if (fresh.minVolumeChangePct   !== undefined) s.minVolumeChangePct   = fresh.minVolumeChangePct;
     if (fresh.maxPriceChange1hPct  !== undefined) s.maxPriceChange1hPct  = fresh.maxPriceChange1hPct;
-    if (fresh.extremeEntryFilterEnabled !== undefined) s.extremeEntryFilterEnabled = fresh.extremeEntryFilterEnabled;
-    if (fresh.extremeEntryP1hPct   !== undefined) s.extremeEntryP1hPct   = fresh.extremeEntryP1hPct;
     if (fresh.maxRiskLevel         !== undefined) s.maxRiskLevel         = fresh.maxRiskLevel;
     if (fresh.defaultDownsidePct != null) config.strategy.defaultDownsidePct = Math.max(1, Number(fresh.defaultDownsidePct));
     if (fresh.defaultUpsidePct   != null) config.strategy.defaultUpsidePct   = Math.max(0, Number(fresh.defaultUpsidePct));

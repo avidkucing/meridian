@@ -17,7 +17,6 @@ gmgn-config.json
 # Runtime state (position tracking, lessons — user-specific)
 state.json
 state_closed.json
-position-memory.json
 lessons.json
 smart-wallets.json
 pool-memory.json
@@ -27,6 +26,7 @@ decision-log.json
 hivemind-cache.json
 narrative-cache.json
 signal-weights.json
+position-memory.json
 
 # Logs
 logs/
@@ -53,4 +53,3 @@ logs.txt
 ohlcv-cache
 *.pem
 *.b64
-position-memory.json

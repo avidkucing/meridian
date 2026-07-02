@@ -129,30 +129,51 @@ When a trailing take-profit fires (price drops from peak by `trailingDropPct`) b
 
 | Field | Default | Description |
 |---|---|---|
-| `localAthFilterPct` | `0` | Only deploy if price is at least N% below the last 6h Meteora OHLCV high |
 | `maxVolatilityToDeploy` | `null` | Block pools above this volatility |
 | `minFeeChangePct` | `-50` | Reject pools where fee momentum fell more than N% |
 | `minVolumeChangePct` | `null` | Reject declining-volume pools |
 | `maxPriceChange1hPct` | `null` | Reject pump tops by 1h price change |
-| `extremeEntryFilterEnabled` | `false` | Block extreme 1h pump/dump entries when RSI is stretched and 5m supertrend agrees |
-| `extremeEntryP1hPct` | `30` | Absolute 1h move threshold used by the extreme entry filter |
-| `negativeDriftFilter` | `true` | Reject pools where 1h price change is in `[negativeDriftP1hMin, negativeDriftP1hMax)` — slow bleeders with no momentum |
-| `negativeDriftP1hMin` | `-5` | Lower bound of the negative drift window |
-| `negativeDriftP1hMax` | `0` | Upper bound of the negative drift window (exclusive) |
 
-### Chart indicator additions
+### Consolidated entry-conditions gate
 
-New indicator rules added on top of the upstream set:
+All price-action and indicator entry checks — candle-body, dip-from-high, bear-candle momentum, negative drift, extreme-entry, and `no_falling_knife` — are now evaluated together by a single `checkEntryConditions(poolAddress, mint)` in `tools/chart-indicators.js`, instead of being scattered across separate filter blocks in `screening.js` and `dlmm.js`. One OHLCV fetch and one indicator-preset fetch cover every candle-based and RSI/supertrend-based sub-check; results are cached per pool for 5 minutes so a deploy that immediately follows fresh screening doesn't refetch.
+
+It's called from two places with the same effect: once per candidate inside `getTopCandidates()`, and again inside `deployPosition()` right before the transaction is built. The second call is what matters for staged-signal deploys that skip a fresh screening pass entirely — without it, a signal captured minutes earlier could deploy against since-changed price action with no gate at all.
 
 | Field | Default | Description |
 |---|---|---|
-| `minDipPct` | `25` | Require at least N% pullback from recent high before entry (`dip_entry` rule) |
-| `dipLookbackCandles` | `36` | Lookback window (× 5m candles) for dip high calculation |
+| `minDipPct` | `0` (disabled) | Require at least N% pullback from recent high before entry |
+| `dipLookbackCandles` | `36` | Lookback window (× 5m candles) for dip-high calculation |
+| `bigCandleWindow` | `20` | Candle-body check lookback (× 5m candles); `0` disables |
+| `bigCandleMaxBodyPct` | `15` | Block entry if any candle body in the window exceeds this % — standalone gate, no dip requirement needed |
 | `bearCandleFilter` | `true` | Block entry when the last 5m candle is flat/bearish in a moderate-pump range — stale momentum guard |
+| `negativeDriftFilter` | `true` | Reject pools where 1h price change is in `[negativeDriftP1hMin, negativeDriftP1hMax)` — slow bleeders with no momentum |
+| `negativeDriftP1hMin` | `-5` | Lower bound of the negative drift window |
+| `negativeDriftP1hMax` | `0` | Upper bound of the negative drift window (exclusive) |
+| `extremeEntryFilterEnabled` | `false` | Block extreme 1h pump/dump entries when RSI is stretched and 5m supertrend agrees |
+| `extremeEntryP1hPct` | `30` | Absolute 1h move threshold used by the extreme entry filter |
 | `rsiMomentum` | `55` | Minimum RSI for `supertrend_or_momentum` confirmation |
 | `rsiFloor` | `16` | RSI floor for `dip_entry` — blocks freefall entries where ST is bullish but RSI is oversold |
 
+**Observe-only blocking toggles** — `bearCandleBlocking`, `negativeDriftBlocking`, and `fallingKnifeBlocking` (all default `true`) are decoupled from the `*Filter`/`*Enabled` flags above. The `*Filter` flags control whether a check runs at all; the blocking toggles control whether a *failing* check actually rejects the candidate, or just gets logged under the `entry_observe` tag and left to pass through. Set a blocking toggle to `false` to gather fresh hit/miss data on a filter before trusting it to reject deploys again.
+
 The `no_falling_knife` exit rule (fires when ST flips bearish or RSI reaches overbought) is implemented via `checkLastCandleMomentum` in `tools/chart-indicators.js`.
+
+### Screening block window
+
+`runScreeningCycle()` now skips screening entirely (no candidate fetch, no deploys) during a configured local-hour window, computed from UTC plus a fixed offset — it wraps past midnight when `screenBlockStartHour > screenBlockEndHour`.
+
+| Field | Default | Description |
+|---|---|---|
+| `screenBlockStartHour` | `23` | Local hour screening blocking begins |
+| `screenBlockEndHour` | `2` | Local hour screening blocking ends |
+| `screenBlockTimezoneOffsetHours` | `7` | Offset added to UTC hour to compute "local" hour |
+
+The default window (23:00–02:00 local) was chosen from a backtest over Jun 28–30 position data, which showed that window had the worst win rate and the largest stop-losses of any period in the sample.
+
+### Closed-position archive (`state_closed.json`)
+
+Closed positions are now moved out of `state.json` into a separate `state_closed.json` on close (`recordClose`, `recordRebalance`, and `syncOpenPositions`' auto-close path all route through `archiveClosedPosition()` in `state.js`). `state.json` stays small and isn't rewritten in full on every PnL tick as position count grows over the bot's lifetime. Lifetime totals (`closedCount`, `totalFeesClaimedAllTime`) are kept on the live `state.json` so `getStateSummary()` doesn't need to scan the archive. `getTrackedPosition()` checks `state.json` first and falls back to `state_closed.json`, so closed-position lookups (e.g. from the dashboard or PnL history) are unaffected.
 
 ### SOL mode PnL computation fix
 
@@ -195,4 +216,9 @@ Both functions use strategy-weighted bin distributions matching the SDK (bid_ask
 ### PVP filter made configurable
 
 The screener prompt's PVP block previously always warned against pools where another mint shares the exact same symbol with meaningful TVL and trading activity. This behavior is now gated on `config.screening.avoidPvpSymbols`. When `avoidPvpSymbols` is false, PVP rivals are allowed — the screener is instructed to pick the stronger variant by volume, smart wallets, and fee metrics rather than skipping both.
+
+### Reliability fixes
+
+- **Telegram fetch timeout** — `postTelegram`/`postTelegramRaw` in `telegram.js` had no timeout on their `fetch()` calls (unlike the `getUpdates` polling loop, which already used `AbortSignal.timeout`). A hung connection on `sendMessage`/`editMessageText` during a management cycle could leave `_managementBusy` stuck `true` indefinitely, silently skipping every management cron tick until the OS eventually killed the socket. Both now abort after 15s and fail into the existing `catch`, so a hung Telegram call degrades to a logged error instead of stalling the bot.
+- **Settings-menu keyboard bug** — the Telegram inline settings menu's "Risk" page passed `toggleButton("trailingTakeProfit", ...)` directly into the keyboard rows array instead of wrapping it in `[]`, producing a `reply_markup.inline_keyboard` that wasn't an array-of-arrays and made Telegram reject the edit with a 400. Fixed in `index.js`'s `renderSettingsMenu()`.
 

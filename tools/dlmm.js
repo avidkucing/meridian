@@ -13,7 +13,7 @@ import {
 import BN from "bn.js";
 import bs58 from "bs58";
 import { config, computeDeployAmount, MIN_SAFE_BINS_BELOW } from "../config.js";
-import { fetchChartIndicatorsForMint, confirmIndicatorPreset } from "./chart-indicators.js";
+import { fetchChartIndicatorsForMint, checkEntryConditions } from "./chart-indicators.js";
 import { log } from "../logger.js";
 import {
   trackPosition,
@@ -1085,26 +1085,20 @@ export async function deployPosition({
     }
   }
 
-  // Indicator pre-check using the real on-chain baseMint — runs here (not executor.js)
+  // Entry-conditions pre-check using the real on-chain baseMint — runs here (not executor.js)
   // so the mint is always authoritative, never confused with the pool address by the LLM.
-  if (config.indicators?.enabled) {
-    try {
-      const confirmation = await confirmIndicatorPreset({
-        mint: baseMint,
-        side: "entry",
-        refresh: true,
-        enabled: true,
-        preset: config.indicators.entryPreset,
-        intervals: config.indicators.intervals,
-        requireAllIntervals: config.indicators.requireAllIntervals ?? false,
-      });
-      if (confirmation.enabled && !confirmation.confirmed && !confirmation.skipped) {
-        log("deploy", `Indicator pre-check blocked deploy for ${baseMint.slice(0, 8)}: ${confirmation.reason}`);
-        return { success: false, error: `Indicator check failed: ${confirmation.reason}` };
-      }
-    } catch (e) {
-      log("deploy", `Indicator pre-check failed (non-blocking): ${e.message}`);
+  // Covers candle-body, dip, bear-candle momentum, negative-drift, extreme-entry, and
+  // no_falling_knife together. Reuses screening's snapshot if <5min old (same pool/candle
+  // window); this is the gate that catches deploys which bypass fresh screening entirely
+  // (e.g. via staged signals -> direct deploy_position).
+  try {
+    const entryCheck = await checkEntryConditions(pool_address, baseMint);
+    if (!entryCheck.confirmed) {
+      log("deploy", `Entry conditions blocked deploy for ${baseMint.slice(0, 8)}: ${entryCheck.reason}`);
+      return { success: false, error: `Entry conditions check failed: ${entryCheck.reason}` };
     }
+  } catch (e) {
+    log("deploy", `Entry conditions check failed (non-blocking): ${e.message}`);
   }
 
   const activeBin = await pool.getActiveBin();

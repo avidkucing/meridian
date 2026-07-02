@@ -191,8 +191,11 @@ const toolMap = {
       minFeeChangePct:     ["screening", "minFeeChangePct"],
       minVolumeChangePct:  ["screening", "minVolumeChangePct"],
       maxPriceChange1hPct: ["screening", "maxPriceChange1hPct"],
-      extremeEntryFilterEnabled: ["screening", "extremeEntryFilterEnabled"],
-      extremeEntryP1hPct: ["screening", "extremeEntryP1hPct"],
+      extremeEntryFilterEnabled: ["indicators", "extremeEntryFilterEnabled", ["chartIndicators", "extremeEntryFilterEnabled"]],
+      extremeEntryP1hPct: ["indicators", "extremeEntryP1hPct", ["chartIndicators", "extremeEntryP1hPct"]],
+      bearCandleBlocking: ["indicators", "bearCandleBlocking", ["chartIndicators", "bearCandleBlocking"]],
+      negativeDriftBlocking: ["indicators", "negativeDriftBlocking", ["chartIndicators", "negativeDriftBlocking"]],
+      fallingKnifeBlocking: ["indicators", "fallingKnifeBlocking", ["chartIndicators", "fallingKnifeBlocking"]],
       minFeePerTvl24h: ["management", "minFeePerTvl24h"],
       loneCandidateMinDegen: ["screening", "loneCandidateMinDegen"],
       // management

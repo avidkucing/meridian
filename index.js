@@ -496,6 +496,24 @@ export async function runScreeningCycle({ silent = false } = {}) {
   let liveMessage = null;
   let screenReport = null;
   try {
+    const { screenBlockStartHour: blockStart, screenBlockEndHour: blockEnd, screenBlockTimezoneOffsetHours: tzOffset } = config.schedule;
+    const localHour = (new Date().getUTCHours() + tzOffset) % 24;
+    const inBlockWindow = blockStart > blockEnd
+      ? (localHour >= blockStart || localHour < blockEnd)
+      : (localHour >= blockStart && localHour < blockEnd);
+    if (inBlockWindow) {
+      log("cron", `Screening skipped — inside deploy block window (${blockStart}:00-${blockEnd}:00 UTC+${tzOffset}, local hour ${localHour})`);
+      screenReport = `Screening skipped — inside deploy block window (${blockStart}:00-${blockEnd}:00 UTC+${tzOffset}).`;
+      appendDecision({
+        type: "skip",
+        actor: "SCREENER",
+        summary: "Screening skipped",
+        reason: `Inside deploy block window (${blockStart}:00-${blockEnd}:00 UTC+${tzOffset})`,
+      });
+      _screeningBusy = false;
+      return screenReport;
+    }
+
     [prePositions, preBalance] = await Promise.all([getMyPositions({ force: true }), getWalletBalances()]);
     prePositionCount = prePositions.total_positions;
     if (prePositionCount >= config.risk.maxPositions) {
@@ -1497,7 +1515,7 @@ function renderSettingsMenu(page = "main") {
       inputButton("maxLossHoldMinutes", "Max loss hold (min)"),
       stepButtons("outOfRangeWaitMinutesAbove", "OOR above (min)", 5),
       stepButtons("outOfRangeWaitMinutesBelow", "OOR below (min)", 5),
-      toggleButton("trailingTakeProfit", "Trailing TP"),
+      [toggleButton("trailingTakeProfit", "Trailing TP")],
       inputButton("trailingTriggerPct", "Trail trigger", { digits: 1 }),
       inputButton("trailingDropPct", "Trail drop", { digits: 1 }),
       [toggleButton("repeatDeployCooldownEnabled", "Repeat cooldown"), toggleButton("allowMultiplePositionsPerToken", "Multi-token pos")],

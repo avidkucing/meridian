@@ -13,6 +13,7 @@ import { log } from "./logger.js";
 import { repoPath } from "./repo-root.js";
 
 const STATE_FILE = repoPath("state.json");
+const STATE_CLOSED_FILE = repoPath("state_closed.json");
 
 const MAX_RECENT_EVENTS = 20;
 const MAX_INSTRUCTION_LENGTH = 280;
@@ -47,6 +48,44 @@ function save(state) {
   } catch (err) {
     log("state_error", `Failed to write state.json: ${err.message}`);
   }
+}
+
+function loadClosed() {
+  if (!fs.existsSync(STATE_CLOSED_FILE)) {
+    return { positions: {} };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(STATE_CLOSED_FILE, "utf8"));
+  } catch (err) {
+    log("state_error", `Failed to read state_closed.json: ${err.message}`);
+    return { positions: {} };
+  }
+}
+
+function saveClosed(closedState) {
+  try {
+    fs.writeFileSync(STATE_CLOSED_FILE, JSON.stringify(closedState, null, 2));
+  } catch (err) {
+    log("state_error", `Failed to write state_closed.json: ${err.message}`);
+  }
+}
+
+/**
+ * Move a closed position out of the hot state.json into state_closed.json,
+ * keeping state.json small so it isn't rewritten in full on every PnL tick.
+ * Rolls the position's fees into a running lifetime total on `state` first.
+ */
+function archiveClosedPosition(state, position_address) {
+  const pos = state.positions[position_address];
+  if (!pos) return;
+  delete state.positions[position_address];
+
+  state.closedCount = (state.closedCount || 0) + 1;
+  state.totalFeesClaimedAllTime = (state.totalFeesClaimedAllTime || 0) + (pos.total_fees_claimed_usd || 0);
+
+  const closedState = loadClosed();
+  closedState.positions[position_address] = pos;
+  saveClosed(closedState);
 }
 
 // ─── Position Registry ─────────────────────────────────────────
@@ -211,6 +250,7 @@ export function recordClose(position_address, reason) {
   pos.closed_at = new Date().toISOString();
   pos.notes.push(`Closed at ${pos.closed_at}: ${reason}`);
   pushEvent(state, { action: "close", position: position_address, pool_name: pos.pool_name || pos.pool, reason });
+  archiveClosedPosition(state, position_address);
   save(state);
   log("state", `Position ${position_address} marked closed: ${reason}`);
 }
@@ -221,14 +261,16 @@ export function recordClose(position_address, reason) {
 export function recordRebalance(old_position, new_position) {
   const state = load();
   const old = state.positions[old_position];
+  const oldRebalanceCount = old?.rebalance_count || 0;
   if (old) {
     old.closed = true;
     old.closed_at = new Date().toISOString();
     old.notes.push(`Rebalanced into ${new_position} at ${old.closed_at}`);
+    archiveClosedPosition(state, old_position);
   }
   const newPos = state.positions[new_position];
   if (newPos) {
-    newPos.rebalance_count = (old?.rebalance_count || 0) + 1;
+    newPos.rebalance_count = oldRebalanceCount + 1;
     newPos.notes.push(`Rebalanced from ${old_position}`);
   }
   save(state);
@@ -412,11 +454,14 @@ export function getTrackedPositions(openOnly = false) {
 }
 
 /**
- * Get a single tracked position.
+ * Get a single tracked position. Falls back to the closed archive
+ * (state_closed.json) if not found among live/open positions.
  */
 export function getTrackedPosition(position_address) {
   const state = load();
-  return state.positions[position_address] || null;
+  if (state.positions[position_address]) return state.positions[position_address];
+  const closedState = loadClosed();
+  return closedState.positions[position_address] || null;
 }
 
 /**
@@ -425,13 +470,12 @@ export function getTrackedPosition(position_address) {
 export function getStateSummary() {
   const state = load();
   const open = Object.values(state.positions).filter((p) => !p.closed);
-  const closed = Object.values(state.positions).filter((p) => p.closed);
-  const totalFeesClaimed = Object.values(state.positions)
-    .reduce((sum, p) => sum + (p.total_fees_claimed_usd || 0), 0);
+  const totalFeesClaimed = (state.totalFeesClaimedAllTime || 0) +
+    open.reduce((sum, p) => sum + (p.total_fees_claimed_usd || 0), 0);
 
   return {
     open_positions: open.length,
-    closed_positions: closed.length,
+    closed_positions: state.closedCount || 0,
     total_fees_claimed_usd: Math.round(totalFeesClaimed * 100) / 100,
     positions: open.map((p) => ({
       position: p.position,
@@ -582,6 +626,7 @@ export function syncOpenPositions(active_addresses) {
     pos.closed = true;
     pos.closed_at = new Date().toISOString();
     pos.notes.push(`Auto-closed during state sync (not found on-chain)`);
+    archiveClosedPosition(state, posId);
     changed = true;
     log("state", `Position ${posId} auto-closed (missing from on-chain data)`);
   }
