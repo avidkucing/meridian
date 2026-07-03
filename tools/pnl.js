@@ -37,6 +37,69 @@ export function getPnlConnection() {
   return _pnlConnection;
 }
 
+// ─── Ground-truth on-chain PnL ──────────────────────────────────
+// Sums the wallet's own SOL balance delta (preBalances -> postBalances) across
+// every transaction belonging to one position's full lifecycle: deploy tx(s),
+// close tx(s)/claim tx(s), and any leftover-token auto-swap tx that ran after
+// close. This is independent of Meteora's /pnl API deposit/withdrawal ledger —
+// it can't be fooled by stale valuations or missed swap-fee/slippage costs,
+// because it reads exactly what left and returned to the wallet.
+export async function computeOnchainSolDelta(txSignatures, walletAddress) {
+  const sigs = [...new Set((txSignatures || []).filter(Boolean))];
+  if (sigs.length === 0) return { sol_delta: null, tx_count: 0, failed_count: 0 };
+
+  const connection = getPnlConnection();
+  let solDelta = 0;
+  let failedCount = 0;
+  let okCount = 0;
+
+  for (const sig of sigs) {
+    try {
+      const tx = await connection.getParsedTransaction(sig, { maxSupportedTransactionVersion: 0 });
+      if (!tx) { failedCount++; continue; }
+      const meta = tx.meta;
+      const accs = tx.transaction.message.accountKeys.map((a) => (a.pubkey ? a.pubkey.toString() : a.toString()));
+      const idx = accs.indexOf(walletAddress);
+      if (idx === -1 || !meta?.preBalances || !meta?.postBalances) { failedCount++; continue; }
+      solDelta += (meta.postBalances[idx] - meta.preBalances[idx]) / 1e9;
+      okCount++;
+    } catch (e) {
+      failedCount++;
+      log("pnl_warn", `computeOnchainSolDelta: failed to fetch ${sig.slice(0, 12)}: ${e.message}`);
+    }
+  }
+
+  if (okCount === 0) return { sol_delta: null, tx_count: sigs.length, failed_count: failedCount };
+  return { sol_delta: Math.round(solDelta * 1e9) / 1e9, tx_count: sigs.length, failed_count: failedCount };
+}
+
+// A deploy creates a wallet-owned token account (ATA) for the base mint to hold
+// any base-token exposure. When a position never gets touched by price (or the
+// leftover balance is fully swapped away without the account itself being closed),
+// that account sits empty on-chain forever, holding its rent-exempt lamports —
+// still the wallet's own SOL, just illiquid until someone closes the account.
+// computeOnchainSolDelta() correctly counts that lamport transfer as a real
+// outflow at deploy time (it did leave the wallet's spendable balance), which
+// would otherwise misreport a fully-recoverable rent parking as a real loss.
+// This checks whether that account is still open and empty, and returns its
+// lamport balance so the caller can add it back as a "not actually lost" credit.
+export async function getReclaimableAtaRent(mint, walletAddress) {
+  if (!mint || !walletAddress) return 0;
+  try {
+    const connection = getPnlConnection();
+    const resp = await connection.getParsedTokenAccountsByOwner(new PublicKey(walletAddress), { mint: new PublicKey(mint) });
+    let lamports = 0;
+    for (const { account } of resp.value) {
+      const amount = Number(account.data?.parsed?.info?.tokenAmount?.uiAmount || 0);
+      if (amount === 0) lamports += account.lamports;
+    }
+    return lamports / 1e9;
+  } catch (e) {
+    log("pnl_warn", `getReclaimableAtaRent failed for ${mint.slice(0, 8)}: ${e.message}`);
+    return 0;
+  }
+}
+
 function safeNum(value) {
   const n = parseFloat(value ?? 0);
   return Number.isFinite(n) ? n : 0;

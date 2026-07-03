@@ -667,8 +667,11 @@ function getDlmmInstructionDiscriminators(serialized) {
 
 function prependComputeBudget(tx, { units = 600_000, microLamports = 0 } = {}) {
   if (!tx || tx.instructions.length === 0) return tx;
-  const existingComputeBudget = tx.instructions.some((ix) => ix.programId.equals(ComputeBudgetProgram.programId));
-  if (existingComputeBudget) return tx;
+  // Replace any existing ComputeBudget instruction (e.g. the Zap SDK's own hardcoded
+  // 600k setComputeUnitLimit) instead of skipping — a lower SDK default silently
+  // overrides our higher requested budget otherwise, since Solana only honors the
+  // first setComputeUnitLimit instruction found in a transaction.
+  tx.instructions = tx.instructions.filter((ix) => !ix.programId.equals(ComputeBudgetProgram.programId));
   const instructions = [ComputeBudgetProgram.setComputeUnitLimit({ units })];
   if (microLamports > 0) {
     instructions.push(ComputeBudgetProgram.setComputeUnitPrice({ microLamports }));
@@ -908,7 +911,7 @@ async function executeMeteoraAtomicZapOutClose({
     preInstructions,
     postInstructions,
   });
-  prependComputeBudget(tx, { units: 800_000 });
+  prependComputeBudget(tx, { units: 1_200_000 });
   const txHash = await sendAndConfirmTransaction(connection, tx, [wallet]);
   log("close", "Meteora atomic zap-out close " + inputMint.slice(0, 8) + " -> " + outputMint.slice(0, 8) + ": " + txHash);
   return { tx: txHash, setup_txs: setupTxHashes, amount_in: estimatedInput.toString() };
@@ -1398,6 +1401,7 @@ export async function deployPosition({
           entry_tvl,
           entry_volume,
           entry_holders,
+          deploy_txs: normalizeExecutionSignatures(submit),
         });
         // Mirror entry to position-memory.json for dashboard
         const tracked1 = getTrackedPosition(positionAddress);
@@ -1570,6 +1574,7 @@ export async function deployPosition({
       entry_tvl,
       entry_volume,
       entry_holders,
+      deploy_txs: txHashes,
     });
     // Mirror entry to position-memory.json for dashboard
     const tracked2 = getTrackedPosition(newPosition.publicKey.toString());

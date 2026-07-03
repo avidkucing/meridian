@@ -210,6 +210,29 @@ export function recordPositionExit(position_address, reason, action, exit_data) 
   save(db);
 }
 
+/**
+ * Patch the already-recorded exit with the ground-truth on-chain SOL delta.
+ * Called from tools/executor.js after the full close sequence — including any
+ * leftover-token auto-swap — has finished, since that swap happens after
+ * recordPositionExit() already ran and can't be known at that point.
+ *
+ * @param {string} position_address
+ * @param {{ sol_delta: number|null, tx_count: number, failed_count: number }} onchain
+ */
+export function updatePositionExitOnchain(position_address, onchain) {
+  const db = load();
+  const pos = db.positions[position_address];
+  if (!pos || !pos.exit) {
+    log("position_memory_warn", `No exit record found for ${position_address} when patching on-chain PnL`);
+    return;
+  }
+  pos.exit.onchain_pnl_sol = onchain?.sol_delta ?? null;
+  pos.exit.onchain_tx_count = onchain?.tx_count ?? null;
+  pos.exit.onchain_partial = (onchain?.failed_count ?? 0) > 0;
+  pos.exit.onchain_reclaimable_rent_sol = onchain?.reclaimable_rent_sol ?? null;
+  save(db);
+}
+
 // ─── Reads ─────────────────────────────────────────────────────
 
 /**

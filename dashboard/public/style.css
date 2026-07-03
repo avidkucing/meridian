@@ -416,3 +416,63 @@ body {
   display: none;
 }
 .error-banner.visible { display: block; }
+
+/* ─── PnL Calendar ──────────────────────────────────────────────── */
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.calendar-nav { display: flex; align-items: center; gap: 12px; }
+.calendar-title { font-size: 20px; font-weight: 700; letter-spacing: .5px; min-width: 180px; text-align: center; }
+.calendar-stats { font-size: 12px; color: var(--text-dim); }
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr) 1.2fr;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.calendar-dow {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.calendar-day {
+  min-height: 108px;
+  padding: 8px 10px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  font-size: 12px;
+}
+.calendar-day.out-of-month { background: var(--bg); color: var(--text-mute); }
+.calendar-day.win  { background: rgba(63,185,80,.16); }
+.calendar-day.loss { background: rgba(248,81,73,.16); }
+.calendar-day.today { outline: 2px solid var(--accent2); outline-offset: -2px; }
+.calendar-day-num { font-size: 12px; color: var(--text-dim); }
+.calendar-day-stats { margin-top: 20px; text-align: center; font-size: 12px; }
+.calendar-day-count { color: var(--text-dim); font-size: 11px; }
+.calendar-day-sol { font-weight: 700; font-size: 16px; margin-top: 2px; }
+.calendar-day-rate { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.calendar-week {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--surface);
+  gap: 2px;
+}
+.calendar-week-label { font-weight: 700; color: var(--text); }
+.calendar-week-pnl-pos { color: var(--green); font-size: 11px; }
+.calendar-week-pnl-neg { color: var(--red); font-size: 11px; }
+.calendar-note { margin-top: 12px; font-size: 11px; color: var(--text-dim); }

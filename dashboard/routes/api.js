@@ -238,6 +238,10 @@ export async function getPositionHistory() {
       exit_signal_snapshot:  pos.exit?.signal_snapshot ?? null,
       deployed_at:        pos.entry?.deployed_at,
       closed_at:          pos.exit?.closed_at,
+      onchain_pnl_sol:    round(pos.exit?.onchain_pnl_sol, 6),
+      onchain_tx_count:   pos.exit?.onchain_tx_count ?? null,
+      onchain_partial:    pos.exit?.onchain_partial ?? false,
+      onchain_reclaimable_rent_sol: round(pos.exit?.onchain_reclaimable_rent_sol, 6),
       trough_pnl_pct: (() => {
         if (pos.exit?.trough_pnl_pct != null) return round(pos.exit.trough_pnl_pct, 4);
         if (!pos.snapshots?.length) return null;

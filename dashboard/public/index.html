@@ -58,6 +58,7 @@
 <nav class="tabs">
   <button class="tab active" data-tab="current" onclick="switchTab('current')">Open Positions</button>
   <button class="tab" data-tab="history" onclick="switchTab('history')">Closed Positions</button>
+  <button class="tab" data-tab="calendar" onclick="switchTab('calendar')">PnL Calendar</button>
 </nav>
 
 <!-- Current Positions -->
@@ -110,9 +111,8 @@
       <thead>
         <tr>
           <th>Pair</th>
-          <th class="num">PnL %</th>
-          <th class="num">PnL USD</th>
-          <th class="num">PnL SOL</th>
+          <th class="num">PnL</th>
+          <th class="num">PnL (on-chain)</th>
           <th class="num">Max DD</th>
           <th class="num">Hold</th>
           <th class="num">Range Eff.</th>
@@ -123,10 +123,24 @@
           <th>Close Reason</th>
         </tr>
       </thead>
-      <tbody id="history-tbody"><tr><td colspan="12" class="empty-state">Loading...</td></tr></tbody>
+      <tbody id="history-tbody"><tr><td colspan="11" class="empty-state">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="pagination" id="history-pagination"></div>
+</div>
+
+<!-- PnL Calendar (on-chain PnL only) -->
+<div id="tab-calendar" class="tab-panel">
+  <div class="calendar-header">
+    <div class="calendar-nav">
+      <button class="btn btn-ghost" onclick="calendarShiftMonth(-1)">←</button>
+      <span class="calendar-title" id="calendar-title">—</span>
+      <button class="btn btn-ghost" onclick="calendarShiftMonth(1)">→</button>
+    </div>
+    <span class="calendar-stats" id="calendar-stats">—</span>
+  </div>
+  <div class="calendar-grid" id="calendar-grid"></div>
+  <div class="calendar-note">On-chain PnL only — days with no closed positions carrying on-chain data are left blank.</div>
 </div>
 
 <!-- Entry/Exit Snapshot Modal -->

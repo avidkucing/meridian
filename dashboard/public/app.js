@@ -72,6 +72,7 @@ function connectWS() {
     } else if (msg.event === "positions:history") {
       historyPositions = msg.data || [];
       renderHistoryPositions();
+      renderCalendar();
       updateSummary();
     } else if (msg.event === "heartbeat") {
       lastSync = new Date();
@@ -136,6 +137,7 @@ async function fetchHistoryPositions() {
     if (json.ok) {
       historyPositions = json.positions || [];
       renderHistoryPositions();
+      renderCalendar();
       updateSummary();
     }
   } catch (e) {
@@ -322,7 +324,7 @@ function renderHistoryPositions() {
 
   if (!filtered.length) {
     const msg = historyPositions.length ? "No positions match filters" : "No closed positions yet";
-    tbody.innerHTML = `<tr><td colspan="12" class="empty-state">${msg}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="empty-state">${msg}</td></tr>`;
     if (paginationEl) paginationEl.innerHTML = "";
     return;
   }
@@ -364,8 +366,10 @@ function goPage(page) {
 
 function buildHistoryRow(p) {
   const pnlPct = p.pnl_pct ?? 0;
-  const pnlUsd = p.pnl_usd;
   const pnlSol = p.pnl_sol;
+  const initialSol = p.initial_value_sol;
+  const onchainSol = p.onchain_pnl_sol;
+  const onchainPct = onchainSol != null && initialSol > 0 ? (onchainSol / initialSol) * 100 : null;
   const expanded = expandedRows.has("history_" + p.position);
   const dd = p.trough_pnl_pct;
 
@@ -376,9 +380,15 @@ function buildHistoryRow(p) {
         <div class="pool-cell copy-addr" onclick="copyAddr(event,'${esc(p.pool)}')" title="${esc(p.pool)}">${trimAddr(p.pool)}</div>
         ${p.strategy ? `<span class="tag tag-strategy-${p.strategy}">${p.strategy}</span>` : ""}
       </td>
-      <td class="num ${pnlClass(pnlPct)}">${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%</td>
-      <td class="num ${pnlClass(pnlUsd ?? 0)}">${pnlUsd != null ? (pnlUsd >= 0 ? "+$" : "-$") + fmt(Math.abs(pnlUsd)) : "—"}</td>
-      <td class="num ${pnlClass(pnlSol ?? 0)}">${pnlSol != null ? (pnlSol >= 0 ? "+" : "") + Number(pnlSol).toFixed(4) : "—"}</td>
+      <td class="num ${pnlClass(pnlPct)}">
+        <div>${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%</div>
+        <div style="font-size:10px;color:var(--text-dim)">${pnlSol != null ? (pnlSol >= 0 ? "+" : "") + Number(pnlSol).toFixed(4) + " SOL" : "—"}</div>
+      </td>
+      <td class="num ${onchainPct != null ? pnlClass(onchainPct) : ""}">
+        ${onchainPct != null
+          ? `<div>${onchainPct >= 0 ? "+" : ""}${onchainPct.toFixed(2)}%</div><div style="font-size:10px;color:var(--text-dim)">${onchainSol >= 0 ? "+" : ""}${Number(onchainSol).toFixed(4)} SOL${p.onchain_partial ? " (partial)" : ""}</div>`
+          : "—"}
+      </td>
       <td class="num ${dd != null && dd < 0 ? "pnl-neg" : "pnl-zero"}">${dd != null ? dd.toFixed(2) + "%" : "—"}</td>
       <td class="num">${p.minutes_held != null ? fmtAge(p.minutes_held) : "—"}</td>
       <td class="num">${p.range_efficiency != null ? p.range_efficiency.toFixed(0) + "%" : "—"}</td>
@@ -449,9 +459,10 @@ function buildHistoryExpandedRow(p) {
     ["Final Value SOL", sol(p.final_value_sol)],
     ["Fees Earned USD", usd(p.fees_earned_usd)],
     ["Fees Earned SOL", sol(p.fees_earned_sol)],
-    ["PnL USD",        signedUsd(p.pnl_usd)],
-    ["PnL SOL",        signedSol(p.pnl_sol)],
-    ["PnL %",          signed(p.pnl_pct)],
+    ["PnL",            p.pnl_pct != null ? `${signed(p.pnl_pct)} / ${signedSol(p.pnl_sol) ?? "—"}` : null],
+    ["PnL (on-chain)", p.onchain_pnl_sol != null
+                          ? `${p.initial_value_sol > 0 ? signed((p.onchain_pnl_sol / p.initial_value_sol) * 100) + " / " : ""}${signedSol(p.onchain_pnl_sol)}${p.onchain_partial ? " (partial)" : ""}`
+                          : null],
     ["Max DD",         p.trough_pnl_pct != null ? p.trough_pnl_pct.toFixed(2) + "%" : null],
     ["Peak PnL",       signed(p.peak_pnl_pct)],
     ["Range Eff.",     p.range_efficiency != null ? p.range_efficiency.toFixed(1) + "%" : null],
@@ -493,6 +504,110 @@ function buildHistoryExpandedRow(p) {
       </td>
     </tr>
   `;
+}
+
+// ─── PnL Calendar (on-chain PnL only) ─────────────────────────────
+// Aggregates historyPositions by the UTC date of closed_at, using only
+// onchain_pnl_sol — positions without it (pre-dating this feature, or a
+// position predating on-chain PnL tracking) are excluded from every day's
+// stats rather than silently counted as zero.
+
+let calendarMonthOffset = 0; // months relative to the current real month
+
+function calendarShiftMonth(delta) {
+  calendarMonthOffset += delta;
+  renderCalendar();
+}
+
+function calendarDayStats(positions) {
+  const byDay = new Map(); // "YYYY-MM-DD" -> { count, wins, sumSol }
+  for (const p of positions) {
+    if (p.onchain_pnl_sol == null || !p.closed_at) continue;
+    const day = p.closed_at.slice(0, 10); // UTC date
+    if (!byDay.has(day)) byDay.set(day, { count: 0, wins: 0, sumSol: 0 });
+    const d = byDay.get(day);
+    d.count += 1;
+    if (p.onchain_pnl_sol > 0) d.wins += 1;
+    d.sumSol += p.onchain_pnl_sol;
+  }
+  return byDay;
+}
+
+function renderCalendar() {
+  const grid = document.getElementById("calendar-grid");
+  const titleEl = document.getElementById("calendar-title");
+  const statsEl = document.getElementById("calendar-stats");
+  if (!grid) return;
+
+  const now = new Date();
+  const viewDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + calendarMonthOffset, 1));
+  const year = viewDate.getUTCFullYear();
+  const month = viewDate.getUTCMonth(); // 0-indexed
+
+  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  titleEl.textContent = `${monthNames[month].toUpperCase()} ${year}`;
+
+  const byDay = calendarDayStats(historyPositions);
+
+  const firstOfMonth = new Date(Date.UTC(year, month, 1));
+  const startDow = firstOfMonth.getUTCDay(); // 0 = Sun
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const gridStart = new Date(Date.UTC(year, month, 1 - startDow));
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  let html = "";
+  for (const dow of ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]) {
+    html += `<div class="calendar-dow">${dow}</div>`;
+  }
+  html += `<div class="calendar-dow">Week</div>`;
+
+  let daysWithDataThisMonth = 0;
+  let monthSumSol = 0;
+  const weeks = 6;
+  for (let w = 0; w < weeks; w++) {
+    let weekDaysWithData = 0;
+    let weekSumSol = 0;
+    for (let dow = 0; dow < 7; dow++) {
+      const cellDate = new Date(gridStart.getTime() + (w * 7 + dow) * 86400000);
+      const cellStr = cellDate.toISOString().slice(0, 10);
+      const inMonth = cellDate.getUTCMonth() === month;
+      const stat = byDay.get(cellStr);
+
+      let cls = "calendar-day";
+      if (!inMonth) cls += " out-of-month";
+      if (cellStr === todayStr) cls += " today";
+
+      let statsHtml = "";
+      if (stat) {
+        const winRate = (stat.wins / stat.count) * 100;
+        cls += stat.sumSol >= 0 ? " win" : " loss";
+        statsHtml = `
+          <div class="calendar-day-stats">
+            <div class="calendar-day-count">${stat.count} position${stat.count === 1 ? "" : "s"}</div>
+            <div class="calendar-day-sol">${stat.sumSol >= 0 ? "+" : ""}${stat.sumSol.toFixed(4)} SOL</div>
+            <div class="calendar-day-rate">${winRate.toFixed(1)}%</div>
+          </div>`;
+        if (inMonth) {
+          daysWithDataThisMonth++;
+          weekDaysWithData++;
+          monthSumSol += stat.sumSol;
+          weekSumSol += stat.sumSol;
+        }
+      }
+
+      html += `<div class="${cls}"><div class="calendar-day-num">${cellDate.getUTCDate()}</div>${statsHtml}</div>`;
+    }
+    html += `
+      <div class="calendar-week">
+        <div class="calendar-week-label">Week ${w + 1}</div>
+        <div>${weekDaysWithData} day${weekDaysWithData === 1 ? "" : "s"}</div>
+        ${weekDaysWithData > 0 ? `<div class="${weekSumSol >= 0 ? "calendar-week-pnl-pos" : "calendar-week-pnl-neg"}">${weekSumSol >= 0 ? "+" : ""}${weekSumSol.toFixed(4)} SOL</div>` : ""}
+      </div>`;
+  }
+
+  grid.innerHTML = html;
+  statsEl.textContent = `Monthly stats: ${daysWithDataThisMonth} day${daysWithDataThisMonth === 1 ? "" : "s"} · ${monthSumSol >= 0 ? "+" : ""}${monthSumSol.toFixed(4)} SOL`;
 }
 
 // ─── Expanded Row (Current: entry snapshot) ───────────────────────
@@ -602,6 +717,7 @@ function switchTab(tab) {
   activeTab = tab;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + tab));
+  if (tab === "calendar") renderCalendar();
 }
 
 // ─── Modal ────────────────────────────────────────────────────────

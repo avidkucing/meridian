@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { log } from "../logger.js";
+import { getPoolMemory } from "../pool-memory.js";
 
 const DEFAULT_INTERVALS = ["5_MINUTE"];
 const DEFAULT_CANDLES = 298;
@@ -636,6 +637,7 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
   const fallingKnifeBlocking  = config.indicators.fallingKnifeBlocking  !== false;
   const extremeEntryFilterEnabled = config.indicators.extremeEntryFilterEnabled === true;
   const extremeEntryP1hPct = Number(config.indicators.extremeEntryP1hPct ?? 30);
+  const extremeEntryRsi5mMax = Number(config.indicators.extremeEntryRsi5mMax ?? 20);
   const overbought = Number(config.indicators.rsiOverbought ?? 80);
   const oversold   = Number(config.indicators.rsiOversold ?? 30);
 
@@ -689,8 +691,16 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
         if (bearCandleBlocking) {
           failures.push(`momentum: ${check.reason}`);
         } else {
-          checks.momentum = { ...check, reason: `[OBSERVE-ONLY, not blocking] ${check.reason}` };
-          log("entry_observe", `momentum would have blocked ${poolAddress.slice(0, 8)}: ${check.reason}`);
+          // Even in observe mode: hard-block if pool already has a prior SL
+          const poolMem = getPoolMemory({ pool_address: poolAddress });
+          const priorSL = poolMem?.history?.some((d) => d.close_reason === "STOP_LOSS");
+          if (priorSL) {
+            failures.push(`momentum+prior_sl: ${check.reason}`);
+            log("deploy", `momentum blocked ${poolAddress.slice(0, 8)}: bear-candle + prior SL on pool`);
+          } else {
+            checks.momentum = { ...check, reason: `[OBSERVE-ONLY, not blocking] ${check.reason}` };
+            log("entry_observe", `momentum would have blocked ${poolAddress.slice(0, 8)}: ${check.reason}`);
+          }
         }
       }
     } catch (error) {
@@ -745,11 +755,32 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
 
   // Extreme entry check — reuses rsi15m/st5m from the falling-knife fetch above, no extra call
   if (extremeEntryFilterEnabled && Number.isFinite(p1h) && Number.isFinite(rsi15m)) {
-    const rejectPump = p1h > extremeEntryP1hPct && rsi15m >= overbought && st5m === "bullish";
+    const rejectPumpRsi15 = p1h > extremeEntryP1hPct && rsi15m >= overbought && st5m === "bullish";
     const rejectDump = p1h < -extremeEntryP1hPct && rsi15m <= oversold && st5m === "bearish";
+
+    // Fast 5m reversal on top of a big 1h pump: RSI-15m lags a sharp intra-hour
+    // dump that's already visible on the 5m timeframe. Validated against 15 days
+    // of closed positions — p1h>25% + rsi5m<=20 caught both real SL disasters
+    // (DR TRUMP -0.73 SOL, CUPSEY -0.58 SOL) that rsi15m>=80 alone missed, while
+    // only sacrificing modest winners (net -0.93 SOL avoided across 14 hits).
+    let rsi5m = null;
+    let rejectPumpFastReversal = false;
+    if (!rejectPumpRsi15 && p1h > extremeEntryP1hPct && mint) {
+      try {
+        const p5 = await fetchChartIndicatorsForMint(mint, { interval: "5_MINUTE" });
+        rsi5m = p5?.latest?.rsi?.value ?? null;
+        rejectPumpFastReversal = Number.isFinite(rsi5m) && rsi5m <= extremeEntryRsi5mMax;
+      } catch {
+        // non-blocking — leave rejectPumpFastReversal false on fetch failure
+      }
+    }
+
+    const rejectPump = rejectPumpRsi15 || rejectPumpFastReversal;
     checks.extremeEntry = {
       confirmed: !(rejectPump || rejectDump),
-      reason: rejectPump
+      reason: rejectPumpFastReversal && !rejectPumpRsi15
+        ? `extreme entry pump (fast 5m reversal): p1h ${p1h.toFixed(1)}% rsi5 ${rsi5m} rsi15 ${rsi15m}`
+        : rejectPump
         ? `extreme entry pump: p1h ${p1h.toFixed(1)}% rsi15 ${rsi15m} st5 ${st5m}`
         : rejectDump
           ? `extreme entry dump: p1h ${p1h.toFixed(1)}% rsi15 ${rsi15m} st5 ${st5m}`

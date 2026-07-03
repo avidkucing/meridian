@@ -114,6 +114,7 @@ export function trackPosition({
   entry_volume = null,
   entry_holders = null,
   deployed_at = null,
+  deploy_txs = null,
 }) {
   const state = load();
   state.positions[position] = {
@@ -138,6 +139,7 @@ export function trackPosition({
     entry_holders,
     signal_snapshot: signal_snapshot || null,
     deployed_at: deployed_at ?? new Date().toISOString(),
+    deploy_txs: deploy_txs || null,
     out_of_range_since: null,
     out_of_range_direction: null,
     last_claim_at: null,

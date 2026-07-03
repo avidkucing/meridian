@@ -12,7 +12,9 @@ import {
 import { getWalletBalances, swapToken } from "./wallet.js";
 import { studyTopLPers, addTopLPersFromCandidates } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
-import { setPositionInstruction } from "../state.js";
+import { setPositionInstruction, getTrackedPosition } from "../state.js";
+import { updatePositionExitOnchain } from "../position-memory.js";
+import { computeOnchainSolDelta, getReclaimableAtaRent } from "./pnl.js";
 
 import { getPoolMemory, addPoolNote } from "../pool-memory.js";
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
@@ -193,6 +195,7 @@ const toolMap = {
       maxPriceChange1hPct: ["screening", "maxPriceChange1hPct"],
       extremeEntryFilterEnabled: ["indicators", "extremeEntryFilterEnabled", ["chartIndicators", "extremeEntryFilterEnabled"]],
       extremeEntryP1hPct: ["indicators", "extremeEntryP1hPct", ["chartIndicators", "extremeEntryP1hPct"]],
+      extremeEntryRsi5mMax: ["indicators", "extremeEntryRsi5mMax", ["chartIndicators", "extremeEntryRsi5mMax"]],
       bearCandleBlocking: ["indicators", "bearCandleBlocking", ["chartIndicators", "bearCandleBlocking"]],
       negativeDriftBlocking: ["indicators", "negativeDriftBlocking", ["chartIndicators", "negativeDriftBlocking"]],
       fallingKnifeBlocking: ["indicators", "fallingKnifeBlocking", ["chartIndicators", "fallingKnifeBlocking"]],
@@ -594,7 +597,44 @@ export async function executeTool(name, args) {
             result.auto_swapped = true;
             result.auto_swap_note = `Base token already auto-swapped back to SOL (${result.base_mint.slice(0, 8)} → SOL). Do NOT call swap_token again.`;
             if (swapResult?.amount_out) result.sol_received = swapResult.amount_out;
+            // Ground-truth on-chain PnL below sums SOL delta across this tx too.
+            if (swapResult?.tx) result.auto_swap_tx = swapResult.tx;
           }
+        }
+        // Ground-truth on-chain PnL — sums the wallet's own SOL delta across deploy +
+        // close/claim + any leftover-token auto-swap above. Independent of Meteora's
+        // /pnl API, which can under/overvalue a swap leg (see position-memory notes).
+        try {
+          const tracked = getTrackedPosition(args.position_address);
+          if (!tracked?.deploy_txs?.length) {
+            log("close", `On-chain PnL skipped for ${args.position_address.slice(0, 8)}: no deploy_txs on record (position predates on-chain PnL tracking)`);
+          } else {
+            const allTxs = [
+              ...tracked.deploy_txs,
+              ...(result.txs || []),
+              ...(result.zap_out_txs || []),
+              ...(result.auto_swap_tx ? [result.auto_swap_tx] : []),
+            ];
+            const walletAddress = (await getWalletBalances({})).wallet;
+            const onchain = await computeOnchainSolDelta(allTxs, walletAddress);
+            if (onchain.sol_delta != null) {
+              // A deploy always opens a base-token ATA even if it's never used (e.g. price
+              // never enters the range). If it's still sitting empty on-chain, its rent is
+              // still the wallet's own SOL — just illiquid — not a real loss. Credit it back
+              // so a merely-unclosed account doesn't look like a false-alarm loss.
+              const baseMint = result.base_mint || getTrackedPosition(args.position_address)?.signal_snapshot?.base_mint || null;
+              const reclaimableRent = baseMint ? await getReclaimableAtaRent(baseMint, walletAddress) : 0;
+              if (reclaimableRent > 0) {
+                onchain.sol_delta = Math.round((onchain.sol_delta + reclaimableRent) * 1e9) / 1e9;
+                onchain.reclaimable_rent_sol = reclaimableRent;
+                log("close", `On-chain PnL credited back ${reclaimableRent.toFixed(6)} SOL of unclosed-ATA rent for ${args.position_address.slice(0, 8)} (still the wallet's own SOL, not lost)`);
+              }
+              updatePositionExitOnchain(args.position_address, onchain);
+              log("close", `On-chain PnL for ${args.position_address.slice(0, 8)}: ${onchain.sol_delta >= 0 ? "+" : ""}${onchain.sol_delta.toFixed(6)} SOL across ${onchain.tx_count} tx(s)${onchain.failed_count ? ` (${onchain.failed_count} unresolved)` : ""}`);
+            }
+          }
+        } catch (e) {
+          log("executor_warn", `On-chain PnL computation failed: ${e.message}`);
         }
       } else if (name === "claim_fees" && config.management.autoSwapAfterClaim && result.base_mint) {
         await swapBaseToSolWithRetry(result.base_mint, "after claim");

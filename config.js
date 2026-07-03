@@ -353,6 +353,9 @@ export const config = {
     // the overextension (e.g. p1h > +30% with RSI overbought and 5m ST bullish = late pump).
     extremeEntryFilterEnabled: indicatorUserConfig.extremeEntryFilterEnabled ?? false,
     extremeEntryP1hPct:        indicatorUserConfig.extremeEntryP1hPct        ?? 30,
+    // Fast 5m-reversal guard on top of extreme-entry pump: fires when p1h > extremeEntryP1hPct
+    // even if rsi15m hasn't hit overbought yet, as long as rsi5m has already crashed.
+    extremeEntryRsi5mMax:      indicatorUserConfig.extremeEntryRsi5mMax      ?? 20,
     // Blocking toggles — set false to keep a filter computing + logged (tag "entry_observe")
     // without actually rejecting candidates, to gather fresh hit/miss data before re-enabling.
     bearCandleBlocking:    indicatorUserConfig.bearCandleBlocking    ?? true,
