@@ -83,6 +83,39 @@ export function emitPositionsUpdate(positions) { broadcast("positions:update", p
 export function emitHistoryUpdate(history)       { broadcast("positions:history", history); }
 export function emitHeartbeat()                   { broadcast("heartbeat", { ts: Date.now() }); }
 
+// ─── Live broadcast on state change ──────────────────────────────
+// emitPositionsUpdate/emitHistoryUpdate above were never actually called from
+// anywhere in the bot (index.js, executor.js, etc.) — the WebSocket connected
+// and sent one initial snapshot, but nothing pushed updates afterward. Watch
+// the actual state files the bot writes to and re-broadcast on change instead
+// of relying on a caller to remember to emit.
+const REPO_ROOT = join(__dirname2, "..");
+let broadcastTimer = null;
+function scheduleLiveBroadcast() {
+  if (broadcastTimer) return; // already debounced
+  broadcastTimer = setTimeout(async () => {
+    broadcastTimer = null;
+    try {
+      const { getCurrentPositions, getPositionHistory } = await import("./routes/api.js");
+      const [positions, history] = await Promise.all([getCurrentPositions(), getPositionHistory()]);
+      broadcast("positions:update", positions);
+      broadcast("positions:history", history);
+    } catch (err) {
+      console.error("[live-broadcast] failed:", err.message);
+    }
+  }, 500);
+}
+
+const stateWatcher = chokidar.watch(
+  [join(REPO_ROOT, "state.json"), join(REPO_ROOT, "state_closed.json"), join(REPO_ROOT, "position-memory.json")],
+  { ignoreInitial: true, awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 } },
+);
+stateWatcher.on("all", scheduleLiveBroadcast);
+stateWatcher.on("error", (err) => console.error("[live-broadcast] watcher error:", err));
+
+// Keep clients' "last synced" timestamp fresh even when nothing has changed.
+setInterval(() => broadcast("heartbeat", { ts: Date.now() }), 30_000);
+
 wss.on("connection", (ws) => {
   clients.add(ws);
   ws.on("close", () => clients.delete(ws));

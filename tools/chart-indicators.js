@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { log } from "../logger.js";
 import { getPoolMemory } from "../pool-memory.js";
+import { computeCandleSignals, classifyVolatilityRegime } from "./volatility-gatekeeper.js";
 
 const DEFAULT_INTERVALS = ["5_MINUTE"];
 const DEFAULT_CANDLES = 298;
@@ -414,6 +415,7 @@ export async function checkDipFromHigh(poolAddress, {
   }
   if (candles.length < 2) throw new Error(`Too few candles (${candles.length}) for dip check`);
 
+  const latestCandleTs = candles[candles.length - 1]?.time ?? null;
   let dropPct = null, recentHigh = null, currentClose = null, nCandles = null;
 
   // Dip check — not dipped enough is always blocked, no override (only runs if enabled).
@@ -432,6 +434,7 @@ export async function checkDipFromHigh(poolAddress, {
         recentHigh,
         currentClose,
         nCandles,
+        latestCandleTs,
         reason:    `Price is only ${Math.abs(dropPct).toFixed(1)}% below ${nCandles}-candle high — need ≥${minDipPct}% dip before entering`,
       };
     }
@@ -440,7 +443,12 @@ export async function checkDipFromHigh(poolAddress, {
   // Candle check — standalone if dip is disabled, or a second gate on top of a confirmed dip.
   if (candleEnabled) {
     const window = candles.slice(-bigCandleWindow);
-    const worst  = Math.max(...window.filter(c => c?.open > 0).map(c => Math.abs(c.close - c.open) / c.open * 100));
+    const bodies = window.filter(c => c?.open > 0).map(c => ({
+      pct: Math.abs(c.close - c.open) / c.open * 100,
+      ts: c.time,
+    }));
+    const worstEntry = bodies.reduce((a, b) => (b.pct > (a?.pct ?? -1) ? b : a), null);
+    const worst = worstEntry?.pct ?? 0;
     const dipPrefix = dipEnabled ? `Dipped ${Math.abs(dropPct).toFixed(1)}% but ` : "";
     if (worst >= bigCandleMaxBodyPct) {
       return {
@@ -450,6 +458,8 @@ export async function checkDipFromHigh(poolAddress, {
         currentClose,
         nCandles,
         worstBodyPct: +worst.toFixed(2),
+        worstBodyCandleTs: worstEntry?.ts ?? null,
+        latestCandleTs,
         reason:       `${dipPrefix}big candle ${worst.toFixed(1)}% body in last ${window.length} candles — blocked`,
       };
     }
@@ -460,6 +470,8 @@ export async function checkDipFromHigh(poolAddress, {
       currentClose,
       nCandles,
       worstBodyPct: +worst.toFixed(2),
+      worstBodyCandleTs: worstEntry?.ts ?? null,
+      latestCandleTs,
       reason:       dipEnabled
         ? `Dipped ${Math.abs(dropPct).toFixed(1)}% with calm candles (worst body ${worst.toFixed(1)}%) ✓`
         : `Calm candles (worst body ${worst.toFixed(1)}% in last ${window.length}) ✓`,
@@ -472,6 +484,7 @@ export async function checkDipFromHigh(poolAddress, {
     recentHigh,
     currentClose,
     nCandles,
+    latestCandleTs,
     reason:    `Price is ${Math.abs(dropPct).toFixed(1)}% below ${nCandles}-candle high ✓ (need ≥${minDipPct}%)`,
   };
 }
@@ -586,10 +599,14 @@ export async function confirmIndicatorPreset({
 }
 
 // Cache of consolidated entry-check results, keyed by pool address.
-// TTL matches the underlying candle timeframe (5m) — re-checking inside the
-// same closed candle window would just refetch the same data.
+// Originally 5min (matching the candle timeframe), but a real case (DR TRUMP,
+// 2026-07-02) showed a -17% intra-candle crash land entirely inside that window:
+// screening cached a PASS 9s into a candle, deploy reused it 102s later after the
+// candle had already crashed past the big-candle threshold. Shortened to 60s so a
+// deploy that follows screening by more than ~1min always re-checks against fresh
+// candles, while same-cycle reuse (usually <30s apart) still avoids refetching.
 const _entryConditionsCache = new Map();
-const ENTRY_CONDITIONS_TTL_MS = 5 * 60 * 1000;
+const ENTRY_CONDITIONS_TTL_MS = 60 * 1000;
 
 /**
  * Single consolidated entry gate combining all price-action + indicator checks
@@ -637,16 +654,33 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
   const fallingKnifeBlocking  = config.indicators.fallingKnifeBlocking  !== false;
   const extremeEntryFilterEnabled = config.indicators.extremeEntryFilterEnabled === true;
   const extremeEntryP1hPct = Number(config.indicators.extremeEntryP1hPct ?? 30);
+  // Pump-side p1h bound is separate from dump-side: validated against full history,
+  // lowering the pump bound to 15% catches real overbought-grind SLs (RO, FABLE, world)
+  // that rsi15m>=80 alone missed at p1h>25%, while dump-side dip-buys at 15-25% p1h are
+  // net profitable historically and should NOT be blocked at that lower bound.
+  const extremeEntryPumpP1hPct = Number(config.indicators.extremeEntryPumpP1hPct ?? extremeEntryP1hPct);
+  const extremeEntryDumpP1hPct = Number(config.indicators.extremeEntryDumpP1hPct ?? extremeEntryP1hPct);
   const extremeEntryRsi5mMax = Number(config.indicators.extremeEntryRsi5mMax ?? 20);
   const overbought = Number(config.indicators.rsiOverbought ?? 80);
   const oversold   = Number(config.indicators.rsiOversold ?? 30);
+  // Volatility Gatekeeper regime gate — https://x.com/Stakepanda/status/2073484002183258532.
+  // Backtested against 456 closed positions (2026-06-29..07-05): allow-listing only
+  // compression and sharp-flush-dump exhaustion kept the two best-performing regimes
+  // (compression: 76.5% win rate/+0.0020 SOL avg; sharp-flush dump: 70.0% win/+0.0108 SOL
+  // avg, best of any bucket) while blocking expansion (77.3% win rate but -0.0100 SOL
+  // avg — a few large losses hiding behind a high win rate) and every other exhaustion
+  // sub-type/direction, all net negative on-chain.
+  const volatilityGatekeeperEnabled  = config.indicators.volatilityGatekeeperEnabled  !== false;
+  const volatilityGatekeeperBlocking = config.indicators.volatilityGatekeeperBlocking !== false;
+  const VG_LOOKBACK = 36; // 3h at 5m — matches the window the backtest above was run against
 
-  // One OHLCV fetch covering every candle-based check (candle-body, dip, momentum, p1h).
+  // One OHLCV fetch covering every candle-based check (candle-body, dip, momentum, p1h,
+  // volatility-gatekeeper).
   const needCandles = bigCandleWindow > 0 || minDipPct > 0 || bearCandleFilter ||
-    negativeDriftFilter || extremeEntryFilterEnabled || p1hOverride == null;
+    negativeDriftFilter || extremeEntryFilterEnabled || volatilityGatekeeperEnabled || p1hOverride == null;
   let candles = [];
   if (needCandles) {
-    const lookback = Math.max(bigCandleWindow, minDipPct > 0 ? dipLookbackCandles : 0, 13); // 13×5m ≈ 1h for p1h
+    const lookback = Math.max(bigCandleWindow, minDipPct > 0 ? dipLookbackCandles : 0, 13, volatilityGatekeeperEnabled ? VG_LOOKBACK : 0); // 13×5m ≈ 1h for p1h
     const nowSec  = Math.floor(Date.now() / 1000);
     const endTs   = Math.floor(nowSec / 300) * 300;
     const startTs = endTs - Math.ceil(lookback * 5 * 60 * 1.5);
@@ -674,6 +708,13 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
         ? await checkDipFromHigh(poolAddress, { minDipPct, dipLookbackCandles, bigCandleWindow, bigCandleMaxBodyPct }, candles)
         : { confirmed: true, reason: "No candles available — skipping candle/dip check" };
       checks.candle = check;
+      // Data-freshness telemetry: the OHLCV feed can lag real time, which lets a big
+      // candle land just outside what the check can see. Log staleness on every run
+      // (not just failures) so this is diagnosable after the fact.
+      if (check.latestCandleTs != null) {
+        const staleMin = ((Date.now() / 1000) - check.latestCandleTs) / 60;
+        log("candle_freshness", `${poolAddress.slice(0, 8)}: latest candle ${new Date(check.latestCandleTs * 1000).toISOString()} (${staleMin.toFixed(1)}m stale) worstBody=${check.worstBodyPct ?? "n/a"}%${check.worstBodyCandleTs != null ? ` @ ${new Date(check.worstBodyCandleTs * 1000).toISOString()}` : ""} confirmed=${check.confirmed}`);
+      }
       if (!check.confirmed) failures.push(`candle/dip: ${check.reason}`);
     } catch (error) {
       checks.candle = { confirmed: true, reason: `Candle/dip check unavailable: ${error.message}` };
@@ -726,17 +767,30 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
   }
 
   // Falling-knife (indicator preset) — separate API, RSI/ST reused below for extreme-entry
+  // and the volatility-gatekeeper. Fetched whenever EITHER config.indicators.enabled
+  // ("requireIndicators") OR volatilityGatekeeperEnabled is on — these are deliberately
+  // independent toggles. Turning off requireIndicators must only disable falling-knife
+  // and extreme-entry (both explicitly re-checked against config.indicators.enabled below,
+  // not just against rsi15m/st5m being non-null), not silently starve the gatekeeper of
+  // RSI/ST data too.
   let rsi15m = null, st5m = null;
-  if (config.indicators.enabled && mint) {
+  const needIndicatorFetch = (config.indicators.enabled || volatilityGatekeeperEnabled) && mint;
+  if (needIndicatorFetch) {
     try {
-      const confirmation = await confirmIndicatorPreset({ mint, side: "entry" });
-      checks.fallingKnife = confirmation;
-      if (confirmation.enabled && !confirmation.confirmed && !confirmation.skipped) {
-        if (fallingKnifeBlocking) {
-          failures.push(`falling-knife: ${confirmation.reason}`);
-        } else {
-          checks.fallingKnife = { ...confirmation, reason: `[OBSERVE-ONLY, not blocking] ${confirmation.reason}` };
-          log("entry_observe", `falling-knife would have blocked ${poolAddress.slice(0, 8)}: ${confirmation.reason}`);
+      const confirmation = await confirmIndicatorPreset({
+        mint,
+        side: "entry",
+        enabled: config.indicators.enabled || volatilityGatekeeperEnabled,
+      });
+      if (config.indicators.enabled) {
+        checks.fallingKnife = confirmation;
+        if (confirmation.enabled && !confirmation.confirmed && !confirmation.skipped) {
+          if (fallingKnifeBlocking) {
+            failures.push(`falling-knife: ${confirmation.reason}`);
+          } else {
+            checks.fallingKnife = { ...confirmation, reason: `[OBSERVE-ONLY, not blocking] ${confirmation.reason}` };
+            log("entry_observe", `falling-knife would have blocked ${poolAddress.slice(0, 8)}: ${confirmation.reason}`);
+          }
         }
       }
       for (const intv of (confirmation?.intervals ?? [])) {
@@ -749,14 +803,19 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
         }
       }
     } catch (error) {
-      checks.fallingKnife = { confirmed: true, skipped: true, reason: `Falling-knife check unavailable: ${error.message}` };
+      if (config.indicators.enabled) {
+        checks.fallingKnife = { confirmed: true, skipped: true, reason: `Falling-knife check unavailable: ${error.message}` };
+      }
     }
   }
 
-  // Extreme entry check — reuses rsi15m/st5m from the falling-knife fetch above, no extra call
-  if (extremeEntryFilterEnabled && Number.isFinite(p1h) && Number.isFinite(rsi15m)) {
-    const rejectPumpRsi15 = p1h > extremeEntryP1hPct && rsi15m >= overbought && st5m === "bullish";
-    const rejectDump = p1h < -extremeEntryP1hPct && rsi15m <= oversold && st5m === "bearish";
+  // Extreme entry check — reuses rsi15m/st5m from the fetch above, no extra call. Explicitly
+  // requires config.indicators.enabled too, not just rsi15m being non-null — otherwise turning
+  // requireIndicators off while volatilityGatekeeperEnabled stays on would silently reactivate
+  // this check as a side effect of the gatekeeper's own independent fetch above.
+  if (extremeEntryFilterEnabled && config.indicators.enabled && Number.isFinite(p1h) && Number.isFinite(rsi15m)) {
+    const rejectPumpRsi15 = p1h > extremeEntryPumpP1hPct && rsi15m >= overbought && st5m === "bullish";
+    const rejectDump = p1h < -extremeEntryDumpP1hPct && rsi15m <= oversold && st5m === "bearish";
 
     // Fast 5m reversal on top of a big 1h pump: RSI-15m lags a sharp intra-hour
     // dump that's already visible on the 5m timeframe. Validated against 15 days
@@ -765,7 +824,7 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
     // only sacrificing modest winners (net -0.93 SOL avoided across 14 hits).
     let rsi5m = null;
     let rejectPumpFastReversal = false;
-    if (!rejectPumpRsi15 && p1h > extremeEntryP1hPct && mint) {
+    if (!rejectPumpRsi15 && p1h > extremeEntryPumpP1hPct && mint) {
       try {
         const p5 = await fetchChartIndicatorsForMint(mint, { interval: "5_MINUTE" });
         rsi5m = p5?.latest?.rsi?.value ?? null;
@@ -787,6 +846,33 @@ export async function checkEntryConditions(poolAddress, mint, { p1hOverride = nu
           : `p1h ${p1h.toFixed(1)}% within extreme-entry bounds`,
     };
     if (rejectPump || rejectDump) failures.push(checks.extremeEntry.reason);
+  }
+
+  // Volatility Gatekeeper — only compression and sharp-flush-dump exhaustion are allowed
+  // to deploy. Reuses the same candles fetched above (no extra OHLCV call) and rsi15m/st5m
+  // from the falling-knife fetch above (no extra indicator call).
+  if (volatilityGatekeeperEnabled) {
+    try {
+      const candleSignals = candles.length ? computeCandleSignals(candles, { lookback: VG_LOOKBACK }) : null;
+      const vg = classifyVolatilityRegime(
+        { price_change_1h: p1h, rsi_15m: rsi15m, st_dir_5m: st5m, entry_conditions: { checks: { candle: checks.candle } } },
+        candleSignals,
+      );
+      checks.volatilityGatekeeper = vg;
+      const allowed = vg.regime === "compression" ||
+        (vg.regime === "exhaustion" && vg.exhaustion_type === "sharp_flush" && vg.direction === "dump");
+      if (!allowed) {
+        const reason = `volatility-gatekeeper: ${vg.regime}${vg.exhaustion_type ? ` (${vg.exhaustion_type}, ${vg.direction})` : ""} not in allow-list [compression, sharp_flush dump]`;
+        if (volatilityGatekeeperBlocking) {
+          failures.push(reason);
+        } else {
+          checks.volatilityGatekeeper = { ...vg, reason: `[OBSERVE-ONLY, not blocking] ${reason}` };
+          log("entry_observe", `volatility-gatekeeper would have blocked ${poolAddress.slice(0, 8)}: ${reason}`);
+        }
+      }
+    } catch (error) {
+      checks.volatilityGatekeeper = { regime: null, reason: `Volatility-gatekeeper check unavailable: ${error.message}` };
+    }
   }
 
   const result = {

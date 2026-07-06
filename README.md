@@ -136,7 +136,7 @@ When a trailing take-profit fires (price drops from peak by `trailingDropPct`) b
 
 ### Consolidated entry-conditions gate
 
-All price-action and indicator entry checks — candle-body, dip-from-high, bear-candle momentum, negative drift, extreme-entry, and `no_falling_knife` — are now evaluated together by a single `checkEntryConditions(poolAddress, mint)` in `tools/chart-indicators.js`, instead of being scattered across separate filter blocks in `screening.js` and `dlmm.js`. One OHLCV fetch and one indicator-preset fetch cover every candle-based and RSI/supertrend-based sub-check; results are cached per pool for 5 minutes so a deploy that immediately follows fresh screening doesn't refetch.
+All price-action and indicator entry checks — candle-body, dip-from-high, bear-candle momentum, negative drift, extreme-entry, `no_falling_knife`, and the Volatility Gatekeeper (below) — are evaluated together by a single `checkEntryConditions(poolAddress, mint)` in `tools/chart-indicators.js`, instead of being scattered across separate filter blocks in `screening.js` and `dlmm.js`. One OHLCV fetch and one indicator-preset fetch cover every candle-based and RSI/supertrend-based sub-check; results are cached per pool for **60 seconds** (`ENTRY_CONDITIONS_TTL_MS`) — short enough that a deploy which follows screening by more than about a minute always re-checks against fresh candles, while same-cycle reuse still avoids refetching. `checkDipFromHigh` logs candle-freshness telemetry (`candle_freshness` log tag) on every run — latest candle timestamp, staleness in minutes, and the worst-body candle's own timestamp — for diagnosing OHLCV feed lag.
 
 It's called from two places with the same effect: once per candidate inside `getTopCandidates()`, and again inside `deployPosition()` right before the transaction is built. The second call is what matters for staged-signal deploys that skip a fresh screening pass entirely — without it, a signal captured minutes earlier could deploy against since-changed price action with no gate at all.
 
@@ -151,13 +151,16 @@ It's called from two places with the same effect: once per candidate inside `get
 | `negativeDriftP1hMin` | `-5` | Lower bound of the negative drift window |
 | `negativeDriftP1hMax` | `0` | Upper bound of the negative drift window (exclusive) |
 | `extremeEntryFilterEnabled` | `false` | Block extreme 1h pump/dump entries when RSI is stretched and 5m supertrend agrees |
-| `extremeEntryP1hPct` | `30` | Absolute 1h move threshold used by the extreme entry filter |
+| `extremeEntryPumpP1hPct` | `15` | Absolute 1h move threshold for the pump side of the extreme entry filter |
+| `extremeEntryDumpP1hPct` | `25` | Absolute 1h move threshold for the dump side of the extreme entry filter |
 | `rsiMomentum` | `55` | Minimum RSI for `supertrend_or_momentum` confirmation |
 | `rsiFloor` | `16` | RSI floor for `dip_entry` — blocks freefall entries where ST is bullish but RSI is oversold |
 
+Pump and dump sides use separate thresholds because they behave differently: the tighter pump-side bound catches overbought-grind stop-losses, while dip-buys in the dump side's wider 15–25% range are historically net profitable and would be wrongly blocked by a single shared, lower threshold.
+
 **Observe-only blocking toggles** — `bearCandleBlocking`, `negativeDriftBlocking`, and `fallingKnifeBlocking` (all default `true`) are decoupled from the `*Filter`/`*Enabled` flags above. The `*Filter` flags control whether a check runs at all; the blocking toggles control whether a *failing* check actually rejects the candidate, or just gets logged under the `entry_observe` tag and left to pass through. Set a blocking toggle to `false` to gather fresh hit/miss data on a filter before trusting it to reject deploys again.
 
-The `no_falling_knife` exit rule (fires when ST flips bearish or RSI reaches overbought) is implemented via `checkLastCandleMomentum` in `tools/chart-indicators.js`.
+The `no_falling_knife` exit rule (fires when ST flips bearish or RSI reaches overbought) is implemented via `checkLastCandleMomentum` in `tools/chart-indicators.js`. Its indicator fetch (RSI/supertrend) is shared with the Volatility Gatekeeper below — the fetch runs whenever *either* `config.indicators.enabled` or `volatilityGatekeeperEnabled` is on, but falling-knife and extreme-entry themselves stay explicitly gated on `config.indicators.enabled` so disabling that flag doesn't silently reactivate them as a side effect of the gatekeeper's own fetch.
 
 ### Screening block window
 
@@ -221,4 +224,24 @@ The screener prompt's PVP block previously always warned against pools where ano
 
 - **Telegram fetch timeout** — `postTelegram`/`postTelegramRaw` in `telegram.js` had no timeout on their `fetch()` calls (unlike the `getUpdates` polling loop, which already used `AbortSignal.timeout`). A hung connection on `sendMessage`/`editMessageText` during a management cycle could leave `_managementBusy` stuck `true` indefinitely, silently skipping every management cron tick until the OS eventually killed the socket. Both now abort after 15s and fail into the existing `catch`, so a hung Telegram call degrades to a logged error instead of stalling the bot.
 - **Settings-menu keyboard bug** — the Telegram inline settings menu's "Risk" page passed `toggleButton("trailingTakeProfit", ...)` directly into the keyboard rows array instead of wrapping it in `[]`, producing a `reply_markup.inline_keyboard` that wasn't an array-of-arrays and made Telegram reject the edit with a 400. Fixed in `index.js`'s `renderSettingsMenu()`.
+
+### Volatility Gatekeeper
+
+`tools/volatility-gatekeeper.js` classifies each candidate's market regime (based on [this article](https://x.com/Stakepanda/status/2073484002183258532)) into `compression`, `expansion`, or `exhaustion`, using price-action signals computed directly off OHLCV — real prior-range breakout, volume-spike authenticity, reversal/rejection wicks, range rotation vs. a midpoint, VWAP deviation, and round-number proximity — combined with the existing RSI/supertrend/1h-change fields from `checkEntryConditions()`.
+
+It's wired into `checkEntryConditions()` in `tools/chart-indicators.js` as an allow-list gate: only `compression` and `exhaustion` classified as `sharp_flush` + `dump` are allowed to deploy; everything else (including `expansion`, despite its high raw win rate — a few large losses hid behind it) is blocked. This reuses the same OHLCV fetch and RSI/supertrend fetch already done for the other entry checks, so it adds no extra API calls. Reasoning and regime are attached under `checks.volatilityGatekeeper` in the entry-conditions result.
+
+Config flags: `volatilityGatekeeperEnabled` (default `true`) and `volatilityGatekeeperBlocking` (default `true`, set `false` to log matches under `entry_observe` without rejecting).
+
+The module can also classify pump-side exhaustion and suggest a distribute-side range, but that path is marked `actionable: false` — this bot only supports single-sided SOL deploys below the active price (see "Deploy Range Model" in `CLAUDE.md`), so selling into strength above price isn't implementable yet.
+
+### On-chain swap-quote valuation for held base-token balance
+
+`tools/pnl.js` now values a position's token-X (base token) holdings — both the LP balance and unclaimed fees — using the DLMM pool's own on-chain swap quote (`pool.swapQuote()`, via a short-lived cached `DLMM.create()` instance per pool) instead of Jupiter's aggregated reference price. This is the same mechanism the atomic zap-out close actually swaps through, so the live "sell now" value matches what a real close would realize, including this specific pool's liquidity depth, rather than diverging from a generic reference price. Falls back to the Jupiter-price calculation if the on-chain quote call fails. Cost basis is unaffected — deposits stay Meteora-ledger-sourced since a deploy is a plain SOL transfer with no valuation ambiguity.
+
+### Dashboard rewritten as a React/Vite app
+
+`dashboard/frontend/` is a new TypeScript React 19 + Vite 8 + Tailwind 4 app that replaces the hand-written `dashboard/public/app.js`/`style.css`. It builds to `dashboard/public/assets/` (see `vite.config.ts`'s `outDir`), which `dashboard/server.js` continues to serve statically — the Express/WebSocket API is unchanged. Components mirror the old tabs: `SummaryCards`, `OpenPositionsTable`, `ClosedPositionsTable`, `PnlCalendar`, `SnapshotPanel`, `BinRangeBar`, `Header`, `Tabs`. Run `npm run dev` inside `dashboard/frontend/` for a hot-reloading dev server (proxies `/api` and `/ws` to `localhost:3001`), or `npm run build` to regenerate the static bundle consumed by `dashboard/server.js`.
+
+`dashboard/server.js` watches `state.json`, `state_closed.json`, and `position-memory.json` with `chokidar` and re-broadcasts current positions and history to connected WebSocket clients (debounced 500ms) whenever any of them change, plus a 30s heartbeat to keep clients' "last synced" display fresh even when nothing changed.
 

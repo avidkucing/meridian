@@ -1,4 +1,5 @@
 import { Connection, PublicKey } from "@solana/web3.js";
+import BN from "bn.js";
 import { config } from "../config.js";
 import { log } from "../logger.js";
 import {
@@ -216,20 +217,80 @@ function mapEntries(map) {
   return map instanceof Map ? [...map.entries()] : Object.entries(map || {});
 }
 
+// ─── On-chain swap-quote valuation for held base-token balance ──────────
+// Values the position's token-X holdings using the DLMM pool's own on-chain
+// swap quote (same mechanism the atomic zap-out close actually swaps
+// through: tools/dlmm.js executeMeteoraAtomicZapOutClose -> pool.swapQuote())
+// instead of Jupiter's aggregated reference price. This is the amount the
+// position would actually realize if swapped through this pool right now,
+// accounting for this pool's own liquidity depth — the same value basis the
+// real close uses, so a live "sell now" estimate can't diverge from close-time
+// reality the way a generic reference price can (see position-memory notes on
+// Meteora's /pnl API under/overvaluing a swap leg on the CS-SOL close).
+const _dlmmPoolCache = new Map(); // poolAddress -> { at, dlmm }
+const DLMM_POOL_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getSwapQuoteSolValue(DLMM, poolAddress, xRawTotal, decY) {
+  if (!xRawTotal || xRawTotal.lte(new BN(0))) return 0;
+  try {
+    const conn = getPnlConnection();
+    let dlmm;
+    const cached = _dlmmPoolCache.get(poolAddress);
+    if (cached && Date.now() - cached.at < DLMM_POOL_CACHE_TTL_MS) {
+      dlmm = cached.dlmm;
+    } else {
+      dlmm = await DLMM.create(conn, new PublicKey(poolAddress), { skipSolWrappingOperation: true });
+      _dlmmPoolCache.set(poolAddress, { at: Date.now(), dlmm });
+    }
+    const binArrays = await dlmm.getBinArrayForSwap(true); // swapForY: tokenX -> tokenY(SOL)
+    const quote = dlmm.swapQuote(xRawTotal, true, new BN(500), binArrays, true);
+    return Number(quote.outAmount.toString()) / 10 ** decY;
+  } catch (e) {
+    log("pnl_warn", `On-chain swap quote failed for pool ${poolAddress.slice(0, 8)}: ${e.message}`);
+    return null; // caller falls back to Jupiter price
+  }
+}
+
 // ─── Build the shaped position object (matches getMyPositions output) ──
-function buildPosition(f, prices, solUsd, meteora, solMode) {
+async function buildPosition(f, prices, solUsd, meteora, solMode, DLMM) {
   const priceX = f.baseMint ? (prices[f.baseMint] ?? 0) : 0;
+  const holdsTokenX = safeNum(f.xRaw) > 0 || safeNum(f.feeXRaw) > 0;
 
   const xHuman = safeNum(f.xRaw) / 10 ** f.decX;
   const yHuman = safeNum(f.yRaw) / 10 ** f.decY;
-  const balancesUsd = xHuman * priceX + yHuman * (solUsd ?? 0);
-  const balancesSol = solUsd ? balancesUsd / solUsd : yHuman;
-
   const feeXHuman = safeNum(f.feeXRaw) / 10 ** f.decX;
   const feeYHuman = safeNum(f.feeYRaw) / 10 ** f.decY;
-  const claimableUsd = feeXHuman * priceX + feeYHuman * (solUsd ?? 0);
-  const claimableSol = solUsd ? claimableUsd / solUsd : feeYHuman;
 
+  // Value the combined LP + unclaimed-fee token-X balance via the pool's own
+  // on-chain swap quote (matches what closing would actually realize), with
+  // Jupiter's reference price only as a fallback if the quote call fails.
+  const totalXRaw = new BN(String(f.xRaw || "0")).add(new BN(String(f.feeXRaw || "0")));
+  const quoteSol = holdsTokenX ? await getSwapQuoteSolValue(DLMM, f.pool, totalXRaw, f.decY) : 0;
+  const usedOnchainQuote = holdsTokenX && quoteSol != null;
+
+  let balancesSol, claimableSol;
+  if (usedOnchainQuote) {
+    // Split the combined quote back into LP-balance vs unclaimed-fee shares
+    // proportionally to their raw token-X amounts.
+    const xRawNum = safeNum(f.xRaw), feeXRawNum = safeNum(f.feeXRaw);
+    const totalXRawNum = xRawNum + feeXRawNum;
+    const lpShare = totalXRawNum > 0 ? xRawNum / totalXRawNum : 0;
+    balancesSol = quoteSol * lpShare + yHuman;
+    claimableSol = quoteSol * (1 - lpShare) + feeYHuman;
+  } else {
+    balancesSol = solUsd ? (xHuman * priceX) / solUsd + yHuman : yHuman;
+    claimableSol = solUsd ? (feeXHuman * priceX) / solUsd + feeYHuman : feeYHuman;
+  }
+  const balancesUsd = solUsd ? balancesSol * solUsd : 0;
+  const claimableUsd = solUsd ? claimableSol * solUsd : 0;
+
+  // Cost basis stays Meteora-sourced: a deploy is a plain SOL transfer into
+  // the position with no swap/valuation ambiguity, so there's no reason for
+  // Meteora's ledger to be wrong here the way it was on the CS-SOL withdrawal
+  // side. Tried computing this on-chain via the deploy tx's wallet SOL delta
+  // (computeOnchainSolDelta) instead, but that delta also picks up rent for
+  // the new position/ATA accounts and gas — inflating "deposits" by ~0.05+
+  // SOL vs the real LP amount and producing a false loss. Reverted.
   const depositsUsd = safeNum(meteora?.allTimeDeposits?.total?.usd);
   const depositsSol = safeNum(meteora?.allTimeDeposits?.total?.sol);
   const withdrawUsd = safeNum(meteora?.allTimeWithdrawals?.total?.usd);
@@ -255,9 +316,10 @@ function buildPosition(f, prices, solUsd, meteora, solMode) {
   // On-chain amounts are authoritative; a tick is "suspicious" (don't act on it)
   // only when we couldn't price it. Guards against:
   //  - Jupiter outage → solUsd/priceX missing → balances collapse → false STOP_LOSS
+  //    (moot when the on-chain swap quote already priced the token-X side)
   //  - missing Meteora deposits → 0 cost basis → garbage pnl / inflated value
-  const holdsTokenX = xHuman > 0 || feeXHuman > 0;
-  const priceMissing = !(solUsd > 0) || (holdsTokenX && !!f.baseMint && !(priceX > 0));
+  const priceMissing = !(solUsd > 0) ||
+    (holdsTokenX && !usedOnchainQuote && !!f.baseMint && !(priceX > 0));
   let depositsMissing = (solMode ? depositsSol : depositsUsd) <= 0;
   // If SOL deposits are missing but USD deposits are available, fall back to USD
   // after SOL_DEPOSIT_FALLBACK_MS to unblock stop-loss / trailing-TP.
@@ -379,7 +441,9 @@ export async function computePositions(walletAddress) {
   ]);
   const solUsd = prices[SOL_MINT] ?? null;
 
-  const positions = flat.map((f) => buildPosition(f, prices, solUsd, meteoraByPosition[f.position], solMode));
+  const positions = await Promise.all(
+    flat.map((f) => buildPosition(f, prices, solUsd, meteoraByPosition[f.position], solMode, DLMM)),
+  );
 
   return { wallet: walletAddress, total_positions: positions.length, positions, source: "rpc" };
 }

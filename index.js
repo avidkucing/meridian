@@ -313,7 +313,11 @@ export async function runManagementCycle({ silent = false } = {}) {
 
     // Snapshot + load pool memory
     const positionData = positions.map((p) => {
-      recordPositionSnapshot(p.pool, p);
+      // Skip recording when the tick is flagged suspicious (Jupiter/deposit-data
+      // hiccup) — same guard already applied to trough tracking and SL/TP triggers
+      // below. Otherwise a transient bad tick (e.g. priceMissing) permanently
+      // pollutes position-memory/pool-memory history with a fake PnL spike.
+      if (!p.pnl_pct_suspicious) recordPositionSnapshot(p.pool, p);
       return { ...p };
     });
 

@@ -353,7 +353,12 @@ export const config = {
     // the overextension (e.g. p1h > +30% with RSI overbought and 5m ST bullish = late pump).
     extremeEntryFilterEnabled: indicatorUserConfig.extremeEntryFilterEnabled ?? false,
     extremeEntryP1hPct:        indicatorUserConfig.extremeEntryP1hPct        ?? 30,
-    // Fast 5m-reversal guard on top of extreme-entry pump: fires when p1h > extremeEntryP1hPct
+    // Pump/dump p1h bounds tuned separately: pump-side overbought grinds (RO/FABLE/world SL
+    // cases) showed up down to 15%, but dip-buys in the 15-25% dump range are historically
+    // net profitable, so the dump bound stays at the higher default unless overridden.
+    extremeEntryPumpP1hPct:    indicatorUserConfig.extremeEntryPumpP1hPct    ?? 15,
+    extremeEntryDumpP1hPct:    indicatorUserConfig.extremeEntryDumpP1hPct    ?? 25,
+    // Fast 5m-reversal guard on top of extreme-entry pump: fires when p1h > extremeEntryPumpP1hPct
     // even if rsi15m hasn't hit overbought yet, as long as rsi5m has already crashed.
     extremeEntryRsi5mMax:      indicatorUserConfig.extremeEntryRsi5mMax      ?? 20,
     // Blocking toggles — set false to keep a filter computing + logged (tag "entry_observe")
@@ -361,6 +366,12 @@ export const config = {
     bearCandleBlocking:    indicatorUserConfig.bearCandleBlocking    ?? true,
     negativeDriftBlocking: indicatorUserConfig.negativeDriftBlocking ?? true,
     fallingKnifeBlocking:  indicatorUserConfig.fallingKnifeBlocking  ?? true,
+    // Volatility Gatekeeper (tools/volatility-gatekeeper.js) — only allows deploys
+    // classified as compression or sharp-flush-dump exhaustion; blocks expansion and
+    // every other exhaustion sub-type/direction. See checkEntryConditions() for the
+    // backtest numbers behind this allow-list.
+    volatilityGatekeeperEnabled:  indicatorUserConfig.volatilityGatekeeperEnabled  ?? true,
+    volatilityGatekeeperBlocking: indicatorUserConfig.volatilityGatekeeperBlocking ?? true,
   },
 };
 
