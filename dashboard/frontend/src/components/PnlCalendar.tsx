@@ -133,7 +133,7 @@ export function PnlCalendar({ positions }: { positions: HistoryPosition[] }) {
                       <div className="text-[10px] text-text-dim">
                         {day.stat.count} position{day.stat.count === 1 ? "" : "s"}
                       </div>
-                      <div className={`mt-0.5 text-base font-bold font-mono tabular-nums ${day.stat.sumSol >= 0 ? "text-green" : "text-red"}`}>
+                      <div className={`mt-0.5 text-base font-bold tabular-nums ${day.stat.sumSol >= 0 ? "text-green" : "text-red"}`}>
                         {day.stat.sumSol >= 0 ? "+" : ""}
                         {day.stat.sumSol.toFixed(4)} SOL
                       </div>

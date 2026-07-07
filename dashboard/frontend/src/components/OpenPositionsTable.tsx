@@ -61,25 +61,25 @@ export function OpenPositionsTable({ positions }: { positions: CurrentPosition[]
                       {trimAddr(p.pool)}
                     </div>
                   </td>
-                  <td className="border-b border-border px-4 py-3.5 font-mono tabular-nums">${fmt(p.total_value_usd)}</td>
-                  <td className={`border-b border-border px-4 py-3.5 font-mono tabular-nums ${pnlClass(pnl)}`}>
+                  <td className="border-b border-border px-4 py-3.5 tabular-nums">${fmt(p.total_value_usd)}</td>
+                  <td className={`border-b border-border px-4 py-3.5 tabular-nums ${pnlClass(pnl)}`}>
                     <div>{pnl >= 0 ? "+" : ""}${fmt(pnl)}</div>
                     <div className="text-[11px] opacity-80">{signed(pnlPct)}</div>
                   </td>
-                  <td className="border-b border-border px-4 py-3.5 font-mono tabular-nums text-yellow">
+                  <td className="border-b border-border px-4 py-3.5 tabular-nums text-yellow">
                     ${fmt(p.unclaimed_fees_usd)}
                   </td>
-                  <td className="border-b border-border px-4 py-3.5 font-mono tabular-nums">
+                  <td className="border-b border-border px-4 py-3.5 tabular-nums">
                     {p.fee_per_tvl_24h != null ? `${p.fee_per_tvl_24h.toFixed(2)}%` : "—"}
                   </td>
-                  <td className="border-b border-border px-4 py-3.5 font-mono tabular-nums">{fmtAge(p.age_minutes)}</td>
-                  <td className={`border-b border-border px-4 py-3.5 font-mono tabular-nums ${oor > 0 ? "text-red" : "text-green"}`}>
+                  <td className="border-b border-border px-4 py-3.5 tabular-nums">{fmtAge(p.age_minutes)}</td>
+                  <td className={`border-b border-border px-4 py-3.5 tabular-nums ${oor > 0 ? "text-red" : "text-green"}`}>
                     {oor > 0 ? fmtAge(oor) : "in range"}
                   </td>
                   <td className="border-b border-border px-4 py-3.5">
                     <BinRangeBar lowerBin={p.lower_bin} upperBin={p.upper_bin} activeBin={p.active_bin} />
                   </td>
-                  <td className="border-b border-border px-4 py-3.5 font-mono tabular-nums">
+                  <td className="border-b border-border px-4 py-3.5 tabular-nums">
                     {fmtBinUtil(p.bin_utilization)}
                   </td>
                   <td className="border-b border-border px-4 py-3.5">
@@ -93,6 +93,7 @@ export function OpenPositionsTable({ positions }: { positions: CurrentPosition[]
                   <tr key={`${p.position}-panel`}>
                     <td colSpan={10} className="p-0">
                       <SnapshotPanel
+                        pool={p.pool}
                         panels={[
                           {
                             title: "Entry Snapshot",

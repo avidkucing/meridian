@@ -25,7 +25,7 @@ function Card({
         <Icon size={14} />
         <span className="text-[11px] uppercase tracking-wide">{label}</span>
       </div>
-      <div className={`text-xl font-semibold font-mono tabular-nums ${toneClass}`}>{value}</div>
+      <div className={`text-xl font-semibold tabular-nums ${toneClass}`}>{value}</div>
     </div>
   );
 }

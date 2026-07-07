@@ -1,3 +1,4 @@
+import { ExternalLink } from "lucide-react";
 import type { Field } from "../lib/snapshotFields";
 
 function FieldGrid({ fields }: { fields: Field[] }) {
@@ -32,12 +33,28 @@ function SnapshotCard({ title, fields }: SnapshotPanelProps) {
   );
 }
 
-export function SnapshotPanel({ panels }: { panels: SnapshotPanelProps[] }) {
+export function SnapshotPanel({ panels, pool }: { panels: SnapshotPanelProps[]; pool?: string }) {
   return (
-    <div className="grid grid-cols-1 gap-3 border-t border-border bg-bg/40 p-4 lg:grid-cols-2">
-      {panels.map((panel) => (
-        <SnapshotCard key={panel.title} {...panel} />
-      ))}
+    <div className="border-t border-border bg-bg/40 p-4">
+      {pool && (
+        <div className="mb-3 flex justify-end">
+          <a
+            href={`https://www.meteora.ag/dlmm/${pool}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] text-text-dim transition-colors hover:border-accent hover:text-accent"
+          >
+            <ExternalLink size={12} />
+            Open pool on Meteora
+          </a>
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {panels.map((panel) => (
+          <SnapshotCard key={panel.title} {...panel} />
+        ))}
+      </div>
     </div>
   );
 }

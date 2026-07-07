@@ -73,3 +73,20 @@ export function fmtExitType(type: string | null | undefined): string {
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");
 }
+
+export function exitTypeClass(type: string | null | undefined): string {
+  switch (type) {
+    case "STOP_LOSS":
+    case "MAX_LOSS_HOLD":
+      return "text-red";
+    case "TRAILING_TP":
+    case "TAKE_PROFIT":
+      return "text-green";
+    case "OUT_OF_RANGE":
+      return "text-yellow";
+    case "LOW_YIELD":
+      return "text-accent-2";
+    default:
+      return "";
+  }
+}

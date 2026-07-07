@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { HistoryPosition, HistoryFilterState, OutcomeFilter } from "../types";
-import { fmtAge, fmtBinUtil, fmtDatetime, fmtExitType, pnlClass, trimAddr } from "../lib/format";
+import { exitTypeClass, fmtAge, fmtBinUtil, fmtDatetime, fmtExitType, pnlClass, trimAddr } from "../lib/format";
 import { SnapshotPanel } from "./SnapshotPanel";
 import { buildEntryFields, buildExitFields } from "../lib/snapshotFields";
 
@@ -146,7 +146,7 @@ export function ClosedPositionsTable({ positions }: { positions: HistoryPosition
                           </span>
                         )}
                       </td>
-                      <td className={`border-b border-border px-4 py-3.5 font-mono tabular-nums ${pnlClass(pnlPct)}`}>
+                      <td className={`border-b border-border px-4 py-3.5 tabular-nums ${pnlClass(pnlPct)}`}>
                         <div>
                           {pnlPct >= 0 ? "+" : ""}
                           {pnlPct.toFixed(2)}%
@@ -155,7 +155,7 @@ export function ClosedPositionsTable({ positions }: { positions: HistoryPosition
                           {p.pnl_sol != null ? `${p.pnl_sol >= 0 ? "+" : ""}${p.pnl_sol.toFixed(4)} SOL` : "—"}
                         </div>
                       </td>
-                      <td className={`border-b border-border px-4 py-3.5 font-mono tabular-nums ${onchainPct != null ? pnlClass(onchainPct) : "text-text-mute"}`}>
+                      <td className={`border-b border-border px-4 py-3.5 tabular-nums ${onchainPct != null ? pnlClass(onchainPct) : "text-text-mute"}`}>
                         {onchainPct != null && onchainSol != null ? (
                           <>
                             <div>
@@ -172,21 +172,21 @@ export function ClosedPositionsTable({ positions }: { positions: HistoryPosition
                           "—"
                         )}
                       </td>
-                      <td className={`border-b border-border px-4 py-3.5 font-mono tabular-nums ${dd != null && dd < 0 ? "text-red" : "text-text-dim"}`}>
+                      <td className={`border-b border-border px-4 py-3.5 tabular-nums ${dd != null && dd < 0 ? "text-red" : "text-text-dim"}`}>
                         {dd != null ? `${dd.toFixed(2)}%` : "—"}
                       </td>
-                      <td className="border-b border-border px-4 py-3.5 font-mono tabular-nums">{fmtAge(p.minutes_held)}</td>
-                      <td className="border-b border-border px-4 py-3.5 font-mono tabular-nums">
+                      <td className="border-b border-border px-4 py-3.5 tabular-nums">{fmtAge(p.minutes_held)}</td>
+                      <td className="border-b border-border px-4 py-3.5 tabular-nums">
                         {p.range_efficiency != null ? `${p.range_efficiency.toFixed(0)}%` : "—"}
                       </td>
-                      <td className="border-b border-border px-4 py-3.5 font-mono tabular-nums">{fmtBinUtil(p.bin_utilization)}</td>
+                      <td className="border-b border-border px-4 py-3.5 tabular-nums">{fmtBinUtil(p.bin_utilization)}</td>
                       <td className="whitespace-nowrap border-b border-border px-4 py-3.5 text-[11px]">
                         {fmtDatetime(p.deployed_at)}
                       </td>
                       <td className="whitespace-nowrap border-b border-border px-4 py-3.5 text-[11px]">
                         {fmtDatetime(p.closed_at)}
                       </td>
-                      <td className="border-b border-border px-4 py-3.5">{fmtExitType(p.exit_reason_type)}</td>
+                      <td className={`border-b border-border px-4 py-3.5 ${exitTypeClass(p.exit_reason_type)}`}>{fmtExitType(p.exit_reason_type)}</td>
                       <td className="border-b border-border px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <span className="max-w-[160px] truncate text-text-dim" title={p.close_reason ?? undefined}>
@@ -200,6 +200,7 @@ export function ClosedPositionsTable({ positions }: { positions: HistoryPosition
                       <tr>
                         <td colSpan={11} className="p-0">
                           <SnapshotPanel
+                            pool={p.pool}
                             panels={[
                               { title: "Entry Snapshot", fields: buildEntryFields(p.entry_snapshot) },
                               { title: "Exit Snapshot", fields: buildExitFields(p) },
